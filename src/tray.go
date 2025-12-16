@@ -100,49 +100,49 @@ func onReady() {
 	}()
 }
 
-func testConnection() {
-	fmt.Println("=== ТЕСТИРОВАНИЕ ПОДКЛЮЧЕНИЯ ===")
-
-	// 1. Проверяем конфиг
-	fmt.Println("Конфигурация:")
-	fmt.Printf("  Буква диска: %s\n", globalCfg.DriveLetter)
-	fmt.Printf("  URL: %s\n", globalCfg.WebDAVURL)
-
-	// 2. Проверяем парсинг URL
-	u, err := url.Parse(globalCfg.WebDAVURL)
-	if err != nil {
-		fmt.Printf("Ошибка парсинга URL: %v\n", err)
-		return
-	}
-	fmt.Println("\nПарсинг URL:")
-	fmt.Printf("  Схема: %s\n", u.Scheme)
-	fmt.Printf("  Хост: %s\n", u.Host)
-	fmt.Printf("  Путь: %s\n", u.Path)
-
-	// 3. Существующие сетевые диски
-	fmt.Println("\nСуществующие сетевые диски:")
-	cmd := exec.Command("net", "use")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Ошибка выполнения 'net use': %v\n", err)
-	} else {
-		// Принудительно интерпретируем как UTF-8 (если возможно)
-		fmt.Printf("%s\n", string(output))
-	}
-
-	// 4. Учетные данные в Windows Credential Manager
-	fmt.Println("Проверка учетных данных в Windows Credential Manager:")
-	// Запускаем через cmd /C с переключением кодовой страницы на UTF-8
-	cmd = exec.Command("cmd", "/C", "chcp 65001 >nul && cmdkey /list")
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Ошибка выполнения 'cmdkey /list': %v\n", err)
-	} else {
-		fmt.Printf("%s\n", string(output))
-	}
-
-	fmt.Println("=== КОНЕЦ ТЕСТИРОВАНИЯ ===")
-}
+//func testConnection() {
+//	fmt.Println("=== ТЕСТИРОВАНИЕ ПОДКЛЮЧЕНИЯ ===")
+//
+//	// 1. Проверяем конфиг
+//	fmt.Println("Конфигурация:")
+//	fmt.Printf("  Буква диска: %s\n", globalCfg.DriveLetter)
+//	fmt.Printf("  URL: %s\n", globalCfg.WebDAVURL)
+//
+//	// 2. Проверяем парсинг URL
+//	u, err := url.Parse(globalCfg.WebDAVURL)
+//	if err != nil {
+//		fmt.Printf("Ошибка парсинга URL: %v\n", err)
+//		return
+//	}
+//	fmt.Println("\nПарсинг URL:")
+//	fmt.Printf("  Схема: %s\n", u.Scheme)
+//	fmt.Printf("  Хост: %s\n", u.Host)
+//	fmt.Printf("  Путь: %s\n", u.Path)
+//
+//	// 3. Существующие сетевые диски
+//	fmt.Println("\nСуществующие сетевые диски:")
+//	cmd := exec.Command("net", "use")
+//	output, err := cmd.CombinedOutput()
+//	if err != nil {
+//		fmt.Printf("Ошибка выполнения 'net use': %v\n", err)
+//	} else {
+//		// Принудительно интерпретируем как UTF-8 (если возможно)
+//		fmt.Printf("%s\n", string(output))
+//	}
+//
+//	// 4. Учетные данные в Windows Credential Manager
+//	fmt.Println("Проверка учетных данных в Windows Credential Manager:")
+//	// Запускаем через cmd /C с переключением кодовой страницы на UTF-8
+//	cmd = exec.Command("cmd", "/C", "chcp 65001 >nul && cmdkey /list")
+//	output, err = cmd.CombinedOutput()
+//	if err != nil {
+//		fmt.Printf("Ошибка выполнения 'cmdkey /list': %v\n", err)
+//	} else {
+//		fmt.Printf("%s\n", string(output))
+//	}
+//
+//	fmt.Println("=== КОНЕЦ ТЕСТИРОВАНИЯ ===")
+//}
 
 // Проверка: подключён ли диск
 func isDriveMapped(drive string) bool {
@@ -249,11 +249,15 @@ func connectWithLogging() bool {
 
 	// Пробуем подключиться с явными учетными данными
 	logger.Info("Попытка подключения с явными учетными данными...")
-	if err := connectDriveWithCredentials(globalCfg, username, password); err == nil {
+	if err = connectDriveWithCredentials(globalCfg, username, password); err == nil {
 		logger.Info("Диск успешно подключён с явными учетными данными")
 
 		// Сохраняем учетные данные для будущего использования
-		saveCredentials(globalCfg.WebDAVURL, username, password)
+		err = saveCredentials(globalCfg.WebDAVURL, username, password)
+		if err != nil {
+			logger.Warning(err.Error())
+			return false
+		}
 		return true
 	}
 
@@ -290,7 +294,11 @@ func connectWithLogging() bool {
 
 		// Удаляем неверные учётные данные
 		for _, altHost := range altHosts {
-			deleteCredentials(altHost)
+			err = deleteCredentials(altHost)
+			if err != nil {
+				logger.Warning(err.Error())
+				return false
+			}
 		}
 
 		return false
@@ -333,9 +341,17 @@ func connectDriveWithCredentials(cfg *Config, username, password string) error {
 		cmd2.Stdout = &stdout
 		cmd2.Stderr = &stderr
 
-		if err := cmd2.Start(); err == nil {
-			io.WriteString(stdin, password+"\n")
-			stdin.Close()
+		if err = cmd2.Start(); err == nil {
+			_, err = io.WriteString(stdin, password+"\n")
+			if err != nil {
+				logger.Warning(err.Error())
+				return err
+			}
+			err = stdin.Close()
+			if err != nil {
+				logger.Warning(err.Error())
+				return err
+			}
 			err = cmd2.Wait()
 		}
 

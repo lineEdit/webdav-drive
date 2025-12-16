@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
-	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -85,26 +82,34 @@ func isAlreadyRunning() bool {
 }
 
 func showConsole() {
-	procAllocConsole.Call()
+	_, _, err := procAllocConsole.Call()
+	if err != nil {
+		logger.Warning("Failed to alloc console")
+		return
+	}
 }
 
 func hideConsole() {
-	procFreeConsole.Call()
+	_, _, err := procFreeConsole.Call()
+	if err != nil {
+		logger.Warning("Failed to alloc console")
+		return
+	}
 }
 
 // Чтение с консоли
-func readInput(prompt string) string {
-	// Показываем консоль
-	showConsole()
-	defer hideConsole() // скрываем после ввода
-
-	// Перенаправляем stdout/stderr в консоль
-	syscall.Stdout = 1
-	syscall.Stderr = 2
-	syscall.Stdin = 0
-
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
+//func readInput(prompt string) string {
+//	// Показываем консоль
+//	showConsole()
+//	defer hideConsole() // скрываем после ввода
+//
+//	// Перенаправляем stdout/stderr в консоль
+//	syscall.Stdout = 1
+//	syscall.Stderr = 2
+//	syscall.Stdin = 0
+//
+//	fmt.Print(prompt)
+//	reader := bufio.NewReader(os.Stdin)
+//	input, _ := reader.ReadString('\n')
+//	return strings.TrimSpace(input)
+//}
