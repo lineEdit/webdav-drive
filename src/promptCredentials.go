@@ -9,8 +9,9 @@ import (
 func promptCredentials(host string) (username, password string, ok bool, err error) {
 	logger.Infof("Запрос учетных данных для: %s", host)
 
-	// PowerShell скрипт с графическим интерфейсом
-	script := fmt.Sprintf(`
+	// PowerShell команда для создания графического диалога
+	psCommand := fmt.Sprintf(`
+    # Создаем форму
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     
@@ -18,51 +19,52 @@ func promptCredentials(host string) (username, password string, ok bool, err err
     $form.Text = "WebDAV Drive - Вход"
     $form.Size = New-Object System.Drawing.Size(400, 220)
     $form.StartPosition = "CenterScreen"
-    $form.TopMost = $true
     $form.FormBorderStyle = "FixedDialog"
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
+    $form.TopMost = $true
     
     # Информация о сервере
-    $label = New-Object System.Windows.Forms.Label
-    $label.Location = New-Object System.Drawing.Point(10, 10)
-    $label.Size = New-Object System.Drawing.Size(360, 40)
-    $label.Text = "Сервер: %s"
+    $serverLabel = New-Object System.Windows.Forms.Label
+    $serverLabel.Location = New-Object System.Drawing.Point(10, 10)
+    $serverLabel.Size = New-Object System.Drawing.Size(360, 30)
+    $serverLabel.Text = "Сервер: %s"
+    $serverLabel.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
     
     # Поле для имени пользователя
     $userLabel = New-Object System.Windows.Forms.Label
-    $userLabel.Location = New-Object System.Drawing.Point(10, 60)
+    $userLabel.Location = New-Object System.Drawing.Point(10, 50)
     $userLabel.Size = New-Object System.Drawing.Size(120, 20)
     $userLabel.Text = "Имя пользователя:"
     
     $userBox = New-Object System.Windows.Forms.TextBox
-    $userBox.Location = New-Object System.Drawing.Point(140, 60)
+    $userBox.Location = New-Object System.Drawing.Point(140, 50)
     $userBox.Size = New-Object System.Drawing.Size(200, 20)
     
     # Поле для пароля
     $passLabel = New-Object System.Windows.Forms.Label
-    $passLabel.Location = New-Object System.Drawing.Point(10, 90)
+    $passLabel.Location = New-Object System.Drawing.Point(10, 80)
     $passLabel.Size = New-Object System.Drawing.Size(120, 20)
     $passLabel.Text = "Пароль:"
     
     $passBox = New-Object System.Windows.Forms.TextBox
-    $passBox.Location = New-Object System.Drawing.Point(140, 90)
+    $passBox.Location = New-Object System.Drawing.Point(140, 80)
     $passBox.Size = New-Object System.Drawing.Size(200, 20)
     $passBox.PasswordChar = '*'
     
     # Кнопки
     $okButton = New-Object System.Windows.Forms.Button
-    $okButton.Location = New-Object System.Drawing.Point(140, 130)
+    $okButton.Location = New-Object System.Drawing.Point(140, 120)
     $okButton.Size = New-Object System.Drawing.Size(75, 30)
-    $okButton.Text = "OK"
+    $okButton.Text = "Войти"
     
     $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Location = New-Object System.Drawing.Point(225, 130)
+    $cancelButton.Location = New-Object System.Drawing.Point(225, 120)
     $cancelButton.Size = New-Object System.Drawing.Size(75, 30)
     $cancelButton.Text = "Отмена"
     
     # Добавляем элементы
-    $form.Controls.Add($label)
+    $form.Controls.Add($serverLabel)
     $form.Controls.Add($userLabel)
     $form.Controls.Add($userBox)
     $form.Controls.Add($passLabel)
@@ -73,25 +75,29 @@ func promptCredentials(host string) (username, password string, ok bool, err err
     # Результат
     $script:result = $null
     
+    # Обработчик кнопки OK
     $okButton.Add_Click({
-        if ($userBox.Text -ne "" -and $passBox.Text -ne "") {
-            $script:result = @($userBox.Text, $passBox.Text)
+        $user = $userBox.Text.Trim()
+        $pass = $passBox.Text
+        if ($user -ne "" -and $pass -ne "") {
+            $script:result = @($user, $pass)
             $form.Close()
         } else {
-            [System.Windows.Forms.MessageBox]::Show("Заполните все поля", "Ошибка", "OK", "Error")
+            [System.Windows.Forms.MessageBox]::Show("Заполните все поля", "Внимание", "OK", "Warning")
         }
     })
     
+    # Обработчик кнопки Отмена
     $cancelButton.Add_Click({
         $form.Close()
     })
     
-    # Фокус
+    # Фокус на поле ввода
     $form.Add_Shown({
         $userBox.Focus()
     })
     
-    # Показываем форму
+    # Показываем диалог
     $form.ShowDialog() | Out-Null
     
     # Возвращаем результат
@@ -101,28 +107,49 @@ func promptCredentials(host string) (username, password string, ok bool, err err
     }
     `, host)
 
-	// Запускаем PowerShell
+	// Запускаем PowerShell процесс
 	cmd := exec.Command("powershell",
 		"-ExecutionPolicy", "Bypass",
 		"-NoProfile",
 		"-WindowStyle", "Normal",
-		"-Command", script)
+		"-Command", psCommand)
 
+	// Получаем вывод
 	output, err := cmd.Output()
 
+	// Обрабатываем результат
 	if err != nil {
-		// Если пользователь закрыл окно - это не ошибка
+		// Проверяем, не отмена ли это
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Код 0 - успех, другие коды могут быть при отмене
 			logger.Infof("PowerShell завершился с кодом: %d", exitErr.ExitCode())
+		} else {
+			logger.Errorf("Ошибка PowerShell: %v", err)
 		}
 		return "", "", false, nil
 	}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	// Разбираем вывод
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		logger.Info("Пользователь отменил ввод")
+		return "", "", false, nil
+	}
+
+	lines := strings.Split(outputStr, "\r\n")
+	if len(lines) < 2 {
+		lines = strings.Split(outputStr, "\n")
+	}
+
 	if len(lines) >= 2 {
 		username = strings.TrimSpace(lines[0])
 		password = strings.TrimSpace(lines[1])
 		ok = username != "" && password != ""
+
+		if ok {
+			logger.Infof("Учетные данные получены для пользователя: %s", username)
+		}
+
 		return username, password, ok, nil
 	}
 
