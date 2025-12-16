@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net/url"
 	"os"
@@ -20,8 +21,27 @@ var (
 
 // Сохранение учётных данных
 func saveCredentials(target, username, password string) error {
+	logger.Infof("Сохранение учетных данных для: %s, пользователь: %s", target, username)
+
 	cmd := exec.Command("cmdkey", "/generic:"+target, "/user:"+username, "/pass:"+password)
-	return cmd.Run()
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	if err != nil {
+		logger.Errorf("Ошибка сохранения учетных данных:")
+		logger.Errorf("  Команда: cmdkey /generic:%s /user:%s /pass:****", target, username)
+		logger.Errorf("  Stdout: %s", stdout.String())
+		logger.Errorf("  Stderr: %s", stderr.String())
+		logger.Errorf("  Ошибка: %v", err)
+		return err
+	}
+
+	logger.Infof("Учетные данные успешно сохранены в Windows Credential Manager")
+	return nil
 }
 
 // Удаление учётных данных

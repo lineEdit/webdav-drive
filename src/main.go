@@ -17,11 +17,6 @@ var iconOn []byte
 //go:embed assets/icon-off.ico
 var iconOff []byte
 
-type Config struct {
-	DriveLetter string `yaml:"drive_letter"`
-	WebDAVURL   string `yaml:"webdav_url"`
-}
-
 var logger *logrus.Logger
 var globalCfg *Config
 
@@ -60,7 +55,7 @@ func main() {
 	if doReset {
 		cfg, err := loadConfig()
 		if err != nil {
-			logger.Fatal("config.yaml не найден")
+			logger.Fatal("config.json не найден")
 		}
 		if err = deleteCredentials(cfg.WebDAVURL); err != nil {
 			logger.Warnf("Ошибка сброса: %v", err)
@@ -71,7 +66,7 @@ func main() {
 
 	// Первый запуск без конфига → CLI-режим
 	if _, err := os.Stat(getConfigPath()); os.IsNotExist(err) {
-		logger.Info("config.yaml не найден — запуск в CLI-режиме")
+		logger.Info("config.json не найден — запуск в CLI-режиме")
 		runCLIMode()
 		return
 	}

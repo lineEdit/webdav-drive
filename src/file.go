@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +12,11 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 	"gopkg.in/yaml.v3"
 )
+
+type Config struct {
+	DriveLetter string `json:"drive_letter"`
+	WebDAVURL   string `json:"webdav_url"`
+}
 
 // Получаем папку %LOCALAPPDATA%\WebDAV Drive
 func getAppDataDir() string {
@@ -26,14 +33,13 @@ func getAppDataDir() string {
 	}
 	appDir := filepath.Join(appData, "WebDAV Drive")
 	if err := os.MkdirAll(appDir, 0700); err != nil {
-		// Если не можем создать — работаем в текущей директории
 		return "."
 	}
 	return appDir
 }
 
 func getConfigPath() string {
-	return filepath.Join(getAppDataDir(), "config.yaml")
+	return filepath.Join(getAppDataDir(), "config.json")
 }
 
 func getLogPath() string {
@@ -66,20 +72,62 @@ func initLogger(enableConsole bool) {
 	})
 }
 
-// Загрузка конфига
+// Загрузка конфига из JSON
 func loadConfig() (*Config, error) {
-	data, err := os.ReadFile(getConfigPath())
+	configPath := getConfigPath()
+
+	// Если файла нет, создаем дефолтный
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if err := saveDefaultConfig(); err != nil {
+			return nil, err
+		}
+	}
+
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}
+
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		// Если не парсится как JSON, пробуем как YAML (для обратной совместимости)
+		if yamlErr := yaml.Unmarshal(data, &cfg); yamlErr != nil {
+			return nil, fmt.Errorf("не удалось загрузить конфиг: %v (YAML: %v)", err, yamlErr)
+		}
+		// После успешной загрузки YAML, сохраняем как JSON
+		err := saveConfig(&cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
-	// Удаляем пробелы и слэши в конце
+
+	// Чистим данные
+	cfg.DriveLetter = strings.TrimSpace(cfg.DriveLetter)
 	cfg.WebDAVURL = strings.TrimSpace(cfg.WebDAVURL)
 	cfg.WebDAVURL = strings.TrimRight(cfg.WebDAVURL, "/")
+
+	// Валидация
+	if cfg.DriveLetter == "" {
+		cfg.DriveLetter = "Z:"
+	}
+
 	return &cfg, nil
+}
+
+// Сохранение конфига в JSON
+func saveConfig(cfg *Config) error {
+	// Чистим данные перед сохранением
+	cleanCfg := *cfg
+	cleanCfg.DriveLetter = strings.TrimSpace(cleanCfg.DriveLetter)
+	cleanCfg.WebDAVURL = strings.TrimSpace(cleanCfg.WebDAVURL)
+	cleanCfg.WebDAVURL = strings.TrimRight(cleanCfg.WebDAVURL, "/")
+
+	data, err := json.MarshalIndent(&cleanCfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(getConfigPath(), data, 0600)
 }
 
 // Сохранение дефолтного конфига
@@ -88,9 +136,5 @@ func saveDefaultConfig() error {
 		DriveLetter: "Z:",
 		WebDAVURL:   "https://your-webdav-server.com/remote.php/dav/files/your-username",
 	}
-	data, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(getConfigPath(), data, 0600)
+	return saveConfig(&cfg)
 }

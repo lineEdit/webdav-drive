@@ -54,7 +54,7 @@ var
   DriveLetter: String;
   StartPos, EndPos, ResultCode: Integer;
 begin
-  ConfigPath := ExpandConstant('{localappdata}') + '\WebDAV Drive\config.yaml';
+  ConfigPath := ExpandConstant('{localappdata}') + '\WebDAV Drive\config.json';
   if not LoadStringFromFile(ConfigPath, ConfigContent) then
     exit;
 
@@ -91,7 +91,7 @@ var
   WebDAVURL: String;
   StartPos, EndPos, ResultCode: Integer;
 begin
-  ConfigPath := ExpandConstant('{localappdata}') + '\WebDAV Drive\config.yaml';
+  ConfigPath := ExpandConstant('{localappdata}') + '\WebDAV Drive\config.json';
   if not LoadStringFromFile(ConfigPath, ConfigContent) then
     exit;
 

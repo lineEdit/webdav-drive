@@ -49,7 +49,7 @@
 ## ⚙️ Настройка
 
 После установки файл конфигурации создаётся в:  
-`%LOCALAPPDATA%\WebDAV Drive\config.yaml`
+`%LOCALAPPDATA%\WebDAV Drive\config.json`
 
 Пример содержимого:
 ```yaml

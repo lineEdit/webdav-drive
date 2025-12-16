@@ -27,12 +27,12 @@ func runTrayMode() {
 // CLI-режим (для первоначальной настройки)
 func runCLIMode() {
 	if _, err := os.Stat(getConfigPath()); os.IsNotExist(err) {
-		logger.Println("🆕 Первый запуск: создаю config.yaml...")
+		logger.Println("🆕 Первый запуск: создаю config.json...")
 		if err = saveDefaultConfig(); err != nil {
 			logger.Printf("❌ Ошибка создания конфига: %v\n", err)
 			return
 		}
-		logger.Println("✅ config.yaml создан. Отредактируйте его и запустите снова.")
+		logger.Println("✅ config.json создан. Отредактируйте его и запустите снова.")
 		return
 	}
 
