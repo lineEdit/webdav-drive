@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	kernel32         = syscall.NewLazyDLL("kernel32.dll")
-	procAllocConsole = kernel32.NewProc("AllocConsole")
-	procFreeConsole  = kernel32.NewProc("FreeConsole")
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	//procAllocConsole = kernel32.NewProc("AllocConsole")
+	//procFreeConsole  = kernel32.NewProc("FreeConsole")
 )
 
 // Сохранение учётных данных
