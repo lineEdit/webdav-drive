@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bufio"
 	_ "embed"
-	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
+	"github.com/lxn/walk"
+	. "github.com/lxn/walk/declarative"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -72,6 +73,10 @@ func getAppDataDir() string {
 
 func getConfigPath() string {
 	return filepath.Join(getAppDataDir(), "config.yaml")
+}
+
+func getLogsPath() string {
+	return filepath.Join(getAppDataDir(), "webdav-drive.log")
 }
 
 func getLogPath() string {
@@ -134,12 +139,12 @@ func saveDefaultConfig() error {
 }
 
 // Чтение с консоли
-func readInput(prompt string) string {
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
+//func readInput(prompt string) string {
+//	logger.Print(prompt)
+//	reader := bufio.NewReader(os.Stdin)
+//	input, _ := reader.ReadString('\n')
+//	return strings.TrimSpace(input)
+//}
 
 // Сохранение учётных данных
 func saveCredentials(target, username, password string) error {
@@ -149,19 +154,29 @@ func saveCredentials(target, username, password string) error {
 
 // Удаление учётных данных
 func deleteCredentials(target string) error {
-	cmd := exec.Command("cmdkey", "/delete:"+target)
-	err := cmd.Run()
-	// Игнорируем "учётная запись не найдена" (exit status 1)
+	// Удаляем по полному URL
+	err := exec.Command("cmdkey", "/delete:"+target).Run()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			if exitErr.ExitCode() == 1 {
-				logger.Debugf("Учётные данные для %s не найдены — пропуск", target)
-				return nil
-			}
+		logger.Warning("Failed to delete credentials")
+		return err
+	}
+
+	// Извлекаем домен
+	u, err := url.Parse(target)
+	if err == nil {
+		domain := u.Host
+		err = exec.Command("cmdkey", "/delete:"+domain).Run()
+		if err != nil {
+			logger.Warning("Failed to delete credentials")
+			return err
+		}
+		err = exec.Command("cmdkey", "/delete:https://"+domain).Run()
+		if err != nil {
+			logger.Warning("Failed to delete credentials")
+			return err
 		}
 	}
-	return err
+	return nil // игнорируем ошибки
 }
 
 // Проверка: подключён ли диск
@@ -198,9 +213,17 @@ func openConfig() {
 	_ = cmd.Run()
 }
 
+// Открыть webdav-drive.log
+func openLogs() {
+	logger.Info("Открытие webdav-drive.log в редакторе")
+	cmd := exec.Command("notepad", getLogsPath())
+	_ = cmd.Run()
+}
+
 // Обработчик трея
 func onReady() {
 	connected := isDriveMapped(globalCfg.DriveLetter)
+
 	if connected {
 		systray.SetIcon(iconOn)
 	} else {
@@ -210,32 +233,69 @@ func onReady() {
 	systray.SetTitle("WebDAV Drive")
 	systray.SetTooltip(fmt.Sprintf("WebDAV Drive %s — управление подключением", version))
 
-	mConnect := systray.AddMenuItem("Подключить диск", "Подключить WebDAV как сетевой диск")
-	mOpen := systray.AddMenuItem("Открыть диск", "Открыть в Проводнике")
-	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.yaml")
-	mReset := systray.AddMenuItem("Сбросить пароль", "Удалить учётные данные")
-	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
+	mConnectEnable := systray.AddMenuItem("Подключить диск", "Подключить WebDAV как сетевой диск")
+	mConnectDisable := systray.AddMenuItem("Отключить диск", "Отключить WebDAV-диск")
 
+	// Скрываем ненужный
+	if connected {
+		mConnectEnable.Hide()
+	} else {
+		mConnectDisable.Hide()
+	}
+
+	mOpen := systray.AddMenuItem("Проводник", "Открыть в Проводнике")
+	// Скрываем ненужный
 	if !connected {
 		mOpen.Disable()
 	}
+	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.yaml")
+	mLogs := systray.AddMenuItem("Логи", "Посмотреть webdav-drive.log")
+	mReset := systray.AddMenuItem("Сбросить пароль", "Удалить учётные данные")
+	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
 
+	// Горутина обработки
 	go func() {
 		for {
 			select {
-			case <-mConnect.ClickedCh:
+			case <-mConnectEnable.ClickedCh:
 				if connectWithLogging() {
 					systray.SetIcon(iconOn)
 					mOpen.Enable()
+					// Переключаем: скрываем "Подключить", показываем "Отключить"
+					mConnectEnable.Hide()
+					mConnectDisable.Show()
 				}
+
+			case <-mConnectDisable.ClickedCh:
+				cmd := exec.Command("net", "use", globalCfg.DriveLetter, "/delete", "/y")
+				err := cmd.Run()
+				if err != nil {
+					logger.Errorf("Ошибка отключения диска: %v", err)
+				} else {
+					logger.Info("Диск отключён")
+					systray.SetIcon(iconOff)
+					mOpen.Disable()
+					// Переключаем: скрываем "Отключить", показываем "Подключить"
+					mConnectDisable.Hide()
+					mConnectEnable.Show()
+				}
+
 			case <-mOpen.ClickedCh:
 				openDriveInExplorer()
+
 			case <-mSettings.ClickedCh:
 				openConfig()
+
+			case <-mLogs.ClickedCh:
+				openLogs()
+
 			case <-mReset.ClickedCh:
 				resetWithLogging()
 				systray.SetIcon(iconOff)
 				mOpen.Disable()
+				mConnectDisable.Hide()
+				mConnectEnable.Show()
+
 			case <-mExit.ClickedCh:
 				systray.Quit()
 				return
@@ -255,12 +315,51 @@ func connectWithLogging() bool {
 		logger.Info("Диск уже подключён")
 		return true
 	}
-	err := connectDrive(globalCfg)
+
+	// Первая попытка (возможно, учётные данные уже есть)
+	if err := connectDrive(globalCfg); err == nil {
+		logger.Info("Диск успешно подключён")
+		return true
+	}
+
+	// Если не удалось — запрашиваем учётные данные
+	logger.Warn("Подключение не удалось. Запрос учётных данных...")
+
+	// Извлекаем хост из URL для отображения
+	u, err := url.Parse(globalCfg.WebDAVURL)
 	if err != nil {
-		logger.Errorf("Ошибка подключения: %v", err)
+		logger.Errorf("Неверный URL: %v", err)
 		return false
 	}
-	logger.Info("Диск успешно подключён")
+	host := u.Host
+
+	// Запрашиваем логин/пароль через GUI
+	username, password, ok, err := promptCredentials(host)
+	if err != nil || !ok {
+		logger.Warn("Отменено пользователем или ошибка ввода")
+		return false
+	}
+
+	// Сохраняем учётные данные в Windows
+	if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
+		logger.Errorf("Не удалось сохранить учётные данные: %v", err)
+		return false
+	}
+
+	// Повторная попытка подключения
+	logger.Info("Повторная попытка подключения...")
+	if err = connectDrive(globalCfg); err != nil {
+		logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
+		// Опционально: удаляем неверные учётные данные
+		err = deleteCredentials(globalCfg.WebDAVURL)
+		if err != nil {
+			logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
+			return false
+		}
+		return false
+	}
+
+	logger.Info("Диск успешно подключён после ввода учётных данных")
 	return true
 }
 
@@ -271,55 +370,145 @@ func resetWithLogging() {
 	}
 }
 
+// Запрос логина/пароля через нативный Windows диалог
+func promptCredentials(host string) (username, password string, ok bool, err error) {
+	var dlg *walk.Dialog
+	var acceptPB, cancelPB *walk.PushButton
+
+	var usernameTE, passwordTE *walk.LineEdit
+	var rememberCB *walk.CheckBox
+
+	_, err = Dialog{
+		AssignTo:      &dlg,
+		Title:         "WebDAV Drive - Вход",
+		DefaultButton: &acceptPB,
+		CancelButton:  &cancelPB,
+		MinSize:       Size{Width: 300, Height: 200},
+		Layout:        VBox{},
+		Children: []Widget{
+			VSpacer{Size: 10},
+			Composite{
+				Layout: Grid{Columns: 2},
+				Children: []Widget{
+					Label{
+						Text: "Сервер:",
+					},
+					Label{
+						Text: host,
+						Font: Font{Bold: true},
+					},
+					Label{
+						Text: "Пользователь:",
+					},
+					LineEdit{
+						AssignTo: &usernameTE,
+						MinSize:  Size{Width: 200},
+					},
+					Label{
+						Text: "Пароль:",
+					},
+					LineEdit{
+						AssignTo:     &passwordTE,
+						PasswordMode: true,
+						MinSize:      Size{Width: 200},
+					},
+				},
+			},
+			VSpacer{Size: 10},
+			CheckBox{
+				AssignTo: &rememberCB,
+				Text:     "Запомнить учётные данные",
+				Checked:  false,
+			},
+			VSpacer{Size: 10},
+			Composite{
+				Layout: HBox{},
+				Children: []Widget{
+					HSpacer{},
+					PushButton{
+						AssignTo: &acceptPB,
+						Text:     "Войти",
+						OnClicked: func() {
+							username = strings.TrimSpace(usernameTE.Text())
+							password = passwordTE.Text()
+							ok = username != "" && password != ""
+							dlg.Accept()
+						},
+					},
+					PushButton{
+						AssignTo: &cancelPB,
+						Text:     "Отмена",
+						OnClicked: func() {
+							dlg.Cancel()
+						},
+					},
+				},
+			},
+		},
+	}.Run(nil)
+
+	if err != nil {
+		return "", "", false, err
+	}
+
+	return username, password, ok, nil
+}
+
 // CLI-режим (для первоначальной настройки)
 func runCLIMode() {
 	if _, err := os.Stat(getConfigPath()); os.IsNotExist(err) {
-		fmt.Println("🆕 Первый запуск: создаю config.yaml...")
-		if err := saveDefaultConfig(); err != nil {
-			fmt.Printf("❌ Ошибка создания конфига: %v\n", err)
+		logger.Println("🆕 Первый запуск: создаю config.yaml...")
+		if err = saveDefaultConfig(); err != nil {
+			logger.Printf("❌ Ошибка создания конфига: %v\n", err)
 			return
 		}
-		fmt.Println("✅ config.yaml создан. Отредактируйте его и запустите снова.")
+		logger.Println("✅ config.yaml создан. Отредактируйте его и запустите снова.")
 		return
 	}
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Printf("❌ Ошибка загрузки конфига: %v\n", err)
+		logger.Printf("❌ Ошибка загрузки конфига: %v\n", err)
 		return
 	}
 
-	if err := connectDrive(cfg); err == nil {
-		fmt.Println("✅ Диск подключён!")
+	if err = connectDrive(cfg); err == nil {
+		logger.Println("✅ Диск подключён!")
 		return
 	}
 
-	fmt.Println("❌ Подключение не удалось. Введите логин/пароль.")
-	username := readInput("📧 Логин: ")
-	password := readInput("🔑 Пароль: ")
-
-	fmt.Println("💾 Сохраняю в Windows Credential Manager...")
-	if err := saveCredentials(cfg.WebDAVURL, username, password); err != nil {
-		fmt.Printf("❌ Ошибка сохранения: %v\n", err)
+	//logger.Println("❌ Подключение не удалось. Введите логин/пароль.")
+	//username := readInput("📧 Логин: ")
+	//password := readInput("🔑 Пароль: ")
+	u, err := url.Parse(cfg.WebDAVURL)
+	var host string
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		host = u.Host
+	}
+	username, password, ok, err := promptCredentials(host)
+	if err != nil || !ok {
+		logger.Println("❌ Отменено пользователем или ошибка ввода")
 		return
 	}
 
-	fmt.Println("🔁 Повторное подключение...")
-	if err := connectDrive(cfg); err != nil {
-		fmt.Printf("❌ Ошибка подключения: %v\n", err)
+	logger.Println("💾 Сохраняю в Windows Credential Manager...")
+	if err = saveCredentials(cfg.WebDAVURL, username, password); err != nil {
+		logger.Printf("❌ Ошибка сохранения: %v\n", err)
 		return
 	}
-	fmt.Println("✅ Готово!")
+
+	logger.Println("🔁 Повторное подключение...")
+	if err = connectDrive(cfg); err != nil {
+		logger.Printf("❌ Ошибка подключения: %v\n", err)
+		return
+	}
+	logger.Println("✅ Готово!")
 }
 
 // Трей-режим
 func runTrayMode() {
-	// Заглушка для автообновления (реализована в updater.go)
-	checkForUpdates := func() {
-		// Реализация будет подключена из updater.go
-		// Если updater.go не подключен — ничего не делаем
-	}
-
 	connected := isDriveMapped(globalCfg.DriveLetter)
 	if connected {
 		logger.Info("Диск уже подключён при запуске")
@@ -327,7 +516,7 @@ func runTrayMode() {
 
 	// Фоновая проверка обновлений
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(24 * time.Hour)
 		checkForUpdates()
 	}()
 
