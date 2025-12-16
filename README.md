@@ -2,7 +2,7 @@
 
 > **Подключайте любой WebDAV-сервер (Nextcloud, ownCloud, Yandex.Disk и др.) как диск в Проводнике Windows — безопасно, удобно и автоматически!**
 
-![WebDAV Drive в трее](C:\Users\linee\GolandProjects\webdav-drive\src\webdav-drive.png)
+![WebDAV Drive в трее](\src\webdav-drive.ico)
 *Приложение работает в фоне и отображает диск в Проводнике*
 
 ---
