@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	_ "embed"
 	"fmt"
 	"io"
@@ -12,8 +13,6 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
-	"github.com/lxn/walk"
-	. "github.com/lxn/walk/declarative"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -139,12 +138,12 @@ func saveDefaultConfig() error {
 }
 
 // Чтение с консоли
-//func readInput(prompt string) string {
-//	logger.Print(prompt)
-//	reader := bufio.NewReader(os.Stdin)
-//	input, _ := reader.ReadString('\n')
-//	return strings.TrimSpace(input)
-//}
+func readInput(prompt string) string {
+	logger.Print(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
+}
 
 // Сохранение учётных данных
 func saveCredentials(target, username, password string) error {
@@ -322,45 +321,47 @@ func connectWithLogging() bool {
 		return true
 	}
 
+	return false
+
 	// Если не удалось — запрашиваем учётные данные
-	logger.Warn("Подключение не удалось. Запрос учётных данных...")
+	//logger.Warn("Подключение не удалось. Запрос учётных данных...")
 
 	// Извлекаем хост из URL для отображения
-	u, err := url.Parse(globalCfg.WebDAVURL)
-	if err != nil {
-		logger.Errorf("Неверный URL: %v", err)
-		return false
-	}
-	host := u.Host
+	//u, err := url.Parse(globalCfg.WebDAVURL)
+	//if err != nil {
+	//	logger.Errorf("Неверный URL: %v", err)
+	//	return false
+	//}
+	//host := u.Host
 
 	// Запрашиваем логин/пароль через GUI
-	username, password, ok, err := promptCredentials(host)
-	if err != nil || !ok {
-		logger.Warn("Отменено пользователем или ошибка ввода")
-		return false
-	}
+	//username, password, ok, err := promptCredentials(host)
+	//if err != nil || !ok {
+	//	logger.Warn("Отменено пользователем или ошибка ввода")
+	//	return false
+	//}
 
 	// Сохраняем учётные данные в Windows
-	if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
-		logger.Errorf("Не удалось сохранить учётные данные: %v", err)
-		return false
-	}
+	//if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
+	//	logger.Errorf("Не удалось сохранить учётные данные: %v", err)
+	//	return false
+	//}
 
 	// Повторная попытка подключения
-	logger.Info("Повторная попытка подключения...")
-	if err = connectDrive(globalCfg); err != nil {
-		logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
-		// Опционально: удаляем неверные учётные данные
-		err = deleteCredentials(globalCfg.WebDAVURL)
-		if err != nil {
-			logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
-			return false
-		}
-		return false
-	}
+	//logger.Info("Повторная попытка подключения...")
+	//if err = connectDrive(globalCfg); err != nil {
+	//	logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
+	//	// Опционально: удаляем неверные учётные данные
+	//	err = deleteCredentials(globalCfg.WebDAVURL)
+	//	if err != nil {
+	//		logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
+	//		return false
+	//	}
+	//	return false
+	//}
 
-	logger.Info("Диск успешно подключён после ввода учётных данных")
-	return true
+	//logger.Info("Диск успешно подключён после ввода учётных данных")
+	//return true
 }
 
 func resetWithLogging() {
@@ -368,90 +369,6 @@ func resetWithLogging() {
 	if err := deleteCredentials(globalCfg.WebDAVURL); err != nil {
 		logger.Warnf("Ошибка сброса: %v", err)
 	}
-}
-
-// Запрос логина/пароля через нативный Windows диалог
-func promptCredentials(host string) (username, password string, ok bool, err error) {
-	var dlg *walk.Dialog
-	var acceptPB, cancelPB *walk.PushButton
-
-	var usernameTE, passwordTE *walk.LineEdit
-	var rememberCB *walk.CheckBox
-
-	_, err = Dialog{
-		AssignTo:      &dlg,
-		Title:         "WebDAV Drive - Вход",
-		DefaultButton: &acceptPB,
-		CancelButton:  &cancelPB,
-		MinSize:       Size{Width: 300, Height: 200},
-		Layout:        VBox{},
-		Children: []Widget{
-			VSpacer{Size: 10},
-			Composite{
-				Layout: Grid{Columns: 2},
-				Children: []Widget{
-					Label{
-						Text: "Сервер:",
-					},
-					Label{
-						Text: host,
-						Font: Font{Bold: true},
-					},
-					Label{
-						Text: "Пользователь:",
-					},
-					LineEdit{
-						AssignTo: &usernameTE,
-						MinSize:  Size{Width: 200},
-					},
-					Label{
-						Text: "Пароль:",
-					},
-					LineEdit{
-						AssignTo:     &passwordTE,
-						PasswordMode: true,
-						MinSize:      Size{Width: 200},
-					},
-				},
-			},
-			VSpacer{Size: 10},
-			CheckBox{
-				AssignTo: &rememberCB,
-				Text:     "Запомнить учётные данные",
-				Checked:  false,
-			},
-			VSpacer{Size: 10},
-			Composite{
-				Layout: HBox{},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{
-						AssignTo: &acceptPB,
-						Text:     "Войти",
-						OnClicked: func() {
-							username = strings.TrimSpace(usernameTE.Text())
-							password = passwordTE.Text()
-							ok = username != "" && password != ""
-							dlg.Accept()
-						},
-					},
-					PushButton{
-						AssignTo: &cancelPB,
-						Text:     "Отмена",
-						OnClicked: func() {
-							dlg.Cancel()
-						},
-					},
-				},
-			},
-		},
-	}.Run(nil)
-
-	if err != nil {
-		return "", "", false, err
-	}
-
-	return username, password, ok, nil
 }
 
 // CLI-режим (для первоначальной настройки)
@@ -477,21 +394,21 @@ func runCLIMode() {
 		return
 	}
 
-	//logger.Println("❌ Подключение не удалось. Введите логин/пароль.")
-	//username := readInput("📧 Логин: ")
-	//password := readInput("🔑 Пароль: ")
-	u, err := url.Parse(cfg.WebDAVURL)
-	var host string
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		host = u.Host
-	}
-	username, password, ok, err := promptCredentials(host)
-	if err != nil || !ok {
-		logger.Println("❌ Отменено пользователем или ошибка ввода")
-		return
-	}
+	logger.Println("❌ Подключение не удалось. Введите логин/пароль.")
+	username := readInput("📧 Логин: ")
+	password := readInput("🔑 Пароль: ")
+	//u, err := url.Parse(cfg.WebDAVURL)
+	//var host string
+	//if err != nil {
+	//	logger.Fatal(err)
+	//} else {
+	//	host = u.Host
+	//}
+	//username, password, ok, err := promptCredentials(host)
+	//if err != nil || !ok {
+	//	logger.Println("❌ Отменено пользователем или ошибка ввода")
+	//	return
+	//}
 
 	logger.Println("💾 Сохраняю в Windows Credential Manager...")
 	if err = saveCredentials(cfg.WebDAVURL, username, password); err != nil {
