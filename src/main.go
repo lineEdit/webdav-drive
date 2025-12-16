@@ -15,6 +15,7 @@ import (
 	"github.com/getlantern/systray"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/windows"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -77,24 +78,25 @@ func getLogPath() string {
 	return filepath.Join(getAppDataDir(), "webdav-drive.log")
 }
 
-// Логирование
+// Логирование с ротацией
 func initLogger(enableConsole bool) {
 	logger = logrus.New()
-	logFile := getLogPath()
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		logger.Warnf("Не удалось открыть лог-файл %s: %v", logFile, err)
-		file = nil
+
+	// Ротация логов: макс. размер 5 МБ, до 3 архивов, не сжимать
+	logFile := &lumberjack.Logger{
+		Filename:   getLogPath(),
+		MaxSize:    5,     // мегабайт
+		MaxBackups: 3,     // сколько архивных файлов хранить
+		MaxAge:     30,    // дней хранения (0 = бесконечно)
+		Compress:   false, // можно true для .gz
 	}
 
 	if enableConsole {
-		if file != nil {
-			logger.SetOutput(io.MultiWriter(file, os.Stdout))
-		} else {
-			logger.SetOutput(os.Stdout)
-		}
-	} else if file != nil {
-		logger.SetOutput(file)
+		// Вывод и в консоль, и в файл
+		logger.SetOutput(io.MultiWriter(logFile, os.Stdout))
+	} else {
+		// Только в файл
+		logger.SetOutput(logFile)
 	}
 
 	logger.SetFormatter(&logrus.TextFormatter{
@@ -121,8 +123,8 @@ func loadConfig() (*Config, error) {
 // Сохранение дефолтного конфига
 func saveDefaultConfig() error {
 	cfg := Config{
-		DriveLetter: "Z:",
-		WebDAVURL:   "https://your-webdav-server.com/remote.php/dav/files/your-username",
+		DriveLetter: "\"Z:\"",
+		WebDAVURL:   "\"https://your-webdav-server.com/remote.php/dav/files/your-username\"",
 	}
 	data, err := yaml.Marshal(&cfg)
 	if err != nil {
