@@ -81,21 +81,21 @@ func isAlreadyRunning() bool {
 	return false
 }
 
-func showConsole() {
-	_, _, err := procAllocConsole.Call()
-	if err != nil {
-		logger.Warning("Failed to alloc console")
-		return
-	}
-}
-
-func hideConsole() {
-	_, _, err := procFreeConsole.Call()
-	if err != nil {
-		logger.Warning("Failed to alloc console")
-		return
-	}
-}
+//func showConsole() {
+//	_, _, err := procAllocConsole.Call()
+//	if err != nil {
+//		logger.Warning("Failed to alloc console")
+//		return
+//	}
+//}
+//
+//func hideConsole() {
+//	_, _, err := procFreeConsole.Call()
+//	if err != nil {
+//		logger.Warning("Failed to alloc console")
+//		return
+//	}
+//}
 
 // Чтение с консоли
 //func readInput(prompt string) string {
