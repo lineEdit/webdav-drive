@@ -52,9 +52,11 @@
 `%LOCALAPPDATA%\WebDAV Drive\config.json`
 
 Пример содержимого:
-```yaml
-drive_letter: "Z:"
-webdav_url: "https://your-nextcloud.com/remote.php/dav/files/your-username"
+```json
+{
+  "drive_letter": "Z:",
+  "webdav_url": "https://your-nextcloud.com/remote.php/dav/files/your-username"
+}
 ```
 
 ---

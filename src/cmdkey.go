@@ -9,12 +9,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//var (
-//kernel32 = syscall.NewLazyDLL("kernel32.dll")
-//procAllocConsole = kernel32.NewProc("AllocConsole")
-//procFreeConsole  = kernel32.NewProc("FreeConsole")
-//)
-
 // Сохранение учётных данных
 func saveCredentials(target, username, password string) error {
 	logger.Infof("Сохранение учетных данных для: %s, пользователь: %s", target, username)
@@ -79,36 +73,3 @@ func isAlreadyRunning() bool {
 	_ = mutex
 	return false
 }
-
-//func showConsole() {
-//	_, _, err := procAllocConsole.Call()
-//	if err != nil {
-//		logger.Warning("Failed to alloc console")
-//		return
-//	}
-//}
-//
-//func hideConsole() {
-//	_, _, err := procFreeConsole.Call()
-//	if err != nil {
-//		logger.Warning("Failed to alloc console")
-//		return
-//	}
-//}
-
-// Чтение с консоли
-//func readInput(prompt string) string {
-//	// Показываем консоль
-//	showConsole()
-//	defer hideConsole() // скрываем после ввода
-//
-//	// Перенаправляем stdout/stderr в консоль
-//	syscall.Stdout = 1
-//	syscall.Stderr = 2
-//	syscall.Stdin = 0
-//
-//	fmt.Print(prompt)
-//	reader := bufio.NewReader(os.Stdin)
-//	input, _ := reader.ReadString('\n')
-//	return strings.TrimSpace(input)
-//}

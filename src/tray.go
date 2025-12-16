@@ -43,7 +43,6 @@ func onReady() {
 	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.json")
 	mLogs := systray.AddMenuItem("Логи", "Посмотреть webdav-drive.log")
 	mReset := systray.AddMenuItem("Сбросить пароль", "Удалить учётные данные")
-	//mTest := systray.AddMenuItem("Тест подключения", "Тестирование подключения")
 	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
 
 	// Горутина обработки
@@ -89,9 +88,6 @@ func onReady() {
 				mConnectDisable.Hide()
 				mConnectEnable.Show()
 
-			//case <-mTest.ClickedCh:
-			//	testConnection()
-
 			case <-mExit.ClickedCh:
 				systray.Quit()
 				return
@@ -99,50 +95,6 @@ func onReady() {
 		}
 	}()
 }
-
-//func testConnection() {
-//	fmt.Println("=== ТЕСТИРОВАНИЕ ПОДКЛЮЧЕНИЯ ===")
-//
-//	// 1. Проверяем конфиг
-//	fmt.Println("Конфигурация:")
-//	fmt.Printf("  Буква диска: %s\n", globalCfg.DriveLetter)
-//	fmt.Printf("  URL: %s\n", globalCfg.WebDAVURL)
-//
-//	// 2. Проверяем парсинг URL
-//	u, err := url.Parse(globalCfg.WebDAVURL)
-//	if err != nil {
-//		fmt.Printf("Ошибка парсинга URL: %v\n", err)
-//		return
-//	}
-//	fmt.Println("\nПарсинг URL:")
-//	fmt.Printf("  Схема: %s\n", u.Scheme)
-//	fmt.Printf("  Хост: %s\n", u.Host)
-//	fmt.Printf("  Путь: %s\n", u.Path)
-//
-//	// 3. Существующие сетевые диски
-//	fmt.Println("\nСуществующие сетевые диски:")
-//	cmd := exec.Command("net", "use")
-//	output, err := cmd.CombinedOutput()
-//	if err != nil {
-//		fmt.Printf("Ошибка выполнения 'net use': %v\n", err)
-//	} else {
-//		// Принудительно интерпретируем как UTF-8 (если возможно)
-//		fmt.Printf("%s\n", string(output))
-//	}
-//
-//	// 4. Учетные данные в Windows Credential Manager
-//	fmt.Println("Проверка учетных данных в Windows Credential Manager:")
-//	// Запускаем через cmd /C с переключением кодовой страницы на UTF-8
-//	cmd = exec.Command("cmd", "/C", "chcp 65001 >nul && cmdkey /list")
-//	output, err = cmd.CombinedOutput()
-//	if err != nil {
-//		fmt.Printf("Ошибка выполнения 'cmdkey /list': %v\n", err)
-//	} else {
-//		fmt.Printf("%s\n", string(output))
-//	}
-//
-//	fmt.Println("=== КОНЕЦ ТЕСТИРОВАНИЯ ===")
-//}
 
 // Проверка: подключён ли диск
 func isDriveMapped(drive string) bool {
@@ -192,13 +144,6 @@ func openDriveInExplorer() {
 	cmd := exec.Command("explorer", drive)
 	_ = cmd.Run()
 }
-
-// Открыть config.json
-//func openConfig() {
-//	logger.Info("Открытие config.json в редакторе")
-//	cmd := exec.Command("notepad", getConfigPath())
-//	_ = cmd.Run()
-//}
 
 // Открыть webdav-drive.log
 func openLogs() {
