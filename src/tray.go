@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -152,47 +153,45 @@ func connectWithLogging() bool {
 		return true
 	}
 
-	return false
-
 	// Если не удалось — запрашиваем учётные данные
-	//logger.Warn("Подключение не удалось. Запрос учётных данных...")
+	logger.Warn("Подключение не удалось. Запрос учётных данных...")
 
 	// Извлекаем хост из URL для отображения
-	//u, err := url.Parse(globalCfg.WebDAVURL)
-	//if err != nil {
-	//	logger.Errorf("Неверный URL: %v", err)
-	//	return false
-	//}
-	//host := u.Host
+	u, err := url.Parse(globalCfg.WebDAVURL)
+	if err != nil {
+		logger.Errorf("Неверный URL: %v", err)
+		return false
+	}
+	host := u.Host
 
 	// Запрашиваем логин/пароль через GUI
-	//username, password, ok, err := promptCredentials(host)
-	//if err != nil || !ok {
-	//	logger.Warn("Отменено пользователем или ошибка ввода")
-	//	return false
-	//}
+	username, password, ok, err := promptCredentials(host)
+	if err != nil || !ok {
+		logger.Warn("Отменено пользователем или ошибка ввода")
+		return false
+	}
 
 	// Сохраняем учётные данные в Windows
-	//if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
-	//	logger.Errorf("Не удалось сохранить учётные данные: %v", err)
-	//	return false
-	//}
+	if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
+		logger.Errorf("Не удалось сохранить учётные данные: %v", err)
+		return false
+	}
 
 	// Повторная попытка подключения
-	//logger.Info("Повторная попытка подключения...")
-	//if err = connectDrive(globalCfg); err != nil {
-	//	logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
-	//	// Опционально: удаляем неверные учётные данные
-	//	err = deleteCredentials(globalCfg.WebDAVURL)
-	//	if err != nil {
-	//		logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
-	//		return false
-	//	}
-	//	return false
-	//}
+	logger.Info("Повторная попытка подключения...")
+	if err = connectDrive(globalCfg); err != nil {
+		logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
+		// Удаляем неверные учётные данные
+		err = deleteCredentials(globalCfg.WebDAVURL)
+		if err != nil {
+			logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
+			return false
+		}
+		return false
+	}
 
-	//logger.Info("Диск успешно подключён после ввода учётных данных")
-	//return true
+	logger.Info("Диск успешно подключён после ввода учётных данных")
+	return true
 }
 
 func resetWithLogging() {
