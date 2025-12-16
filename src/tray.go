@@ -156,7 +156,6 @@ func connectWithLogging() bool {
 	// Если не удалось — запрашиваем учётные данные
 	logger.Warn("Подключение не удалось. Запрос учётных данных...")
 
-	// Извлекаем хост из URL для отображения
 	u, err := url.Parse(globalCfg.WebDAVURL)
 	if err != nil {
 		logger.Errorf("Неверный URL: %v", err)
@@ -164,29 +163,23 @@ func connectWithLogging() bool {
 	}
 	host := u.Host
 
-	// Запрашиваем логин/пароль через GUI
 	username, password, ok, err := promptCredentials(host)
 	if err != nil || !ok {
 		logger.Warn("Отменено пользователем или ошибка ввода")
 		return false
 	}
 
-	// Сохраняем учётные данные в Windows
-	if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
+	// Сохраняем учётные данные в Windows Credential Manager
+	if err := saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
 		logger.Errorf("Не удалось сохранить учётные данные: %v", err)
 		return false
 	}
 
 	// Повторная попытка подключения
 	logger.Info("Повторная попытка подключения...")
-	if err = connectDrive(globalCfg); err != nil {
+	if err := connectDrive(globalCfg); err != nil {
 		logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
-		// Удаляем неверные учётные данные
-		err = deleteCredentials(globalCfg.WebDAVURL)
-		if err != nil {
-			logger.Warning("err = deleteCredentials(globalCfg.WebDAVURL) - error: %v", err)
-			return false
-		}
+		deleteCredentials(globalCfg.WebDAVURL) // удаляем неверные
 		return false
 	}
 

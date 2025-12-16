@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"time"
 
@@ -47,20 +48,20 @@ func runCLIMode() {
 	}
 
 	logger.Println("❌ Подключение не удалось. Введите логин/пароль.")
-	username := readInput("📧 Логин: ")
-	password := readInput("🔑 Пароль: ")
-	//u, err := url.Parse(cfg.WebDAVURL)
-	//var host string
-	//if err != nil {
-	//	logger.Fatal(err)
-	//} else {
-	//	host = u.Host
-	//}
-	//username, password, ok, err := promptCredentials(host)
-	//if err != nil || !ok {
-	//	logger.Println("❌ Отменено пользователем или ошибка ввода")
-	//	return
-	//}
+	//username := readInput("📧 Логин: ")
+	//password := readInput("🔑 Пароль: ")
+	u, err := url.Parse(cfg.WebDAVURL)
+	var host string
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		host = u.Host
+	}
+	username, password, ok, err := promptCredentials(host)
+	if err != nil || !ok {
+		logger.Println("❌ Отменено пользователем или ошибка ввода")
+		return
+	}
 
 	logger.Println("💾 Сохраняю в Windows Credential Manager...")
 	if err = saveCredentials(cfg.WebDAVURL, username, password); err != nil {

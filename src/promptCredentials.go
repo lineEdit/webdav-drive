@@ -2,112 +2,129 @@ package main
 
 import (
 	"fmt"
-	"syscall"
-	"time"
-	"unsafe"
+	"os/exec"
+	"strings"
 )
-
-// Windows API константы и структуры
-const (
-	CREDUI_FLAGS_ALWAYS_SHOW_UI       = 0x00080000
-	CREDUI_FLAGS_GENERIC_CREDENTIALS  = 0x00040000
-	CREDUI_FLAGS_DO_NOT_PERSIST       = 0x00000002
-	CREDUI_FLAGS_EXCLUDE_CERTIFICATES = 0x00000008
-)
-
-var (
-	credUIDLL                  = syscall.NewLazyDLL("credui.dll")
-	credUIPromptForCredentials = credUIDLL.NewProc("CredUIPromptForCredentialsW")
-	creduiConfirmCredentials   = credUIDLL.NewProc("CredUIConfirmCredentialsW")
-)
-
-type CREDUI_INFO struct {
-	cbSize         uint32
-	hwndParent     uintptr
-	pszMessageText *uint16
-	pszCaptionText *uint16
-	hbmBanner      uintptr
-}
 
 func promptCredentials(host string) (username, password string, ok bool, err error) {
-	// Создаем буферы для результата
-	resultChan := make(chan struct {
-		username, password string
-		ok                 bool
-		err                error
-	}, 1)
+	logger.Infof("Запрос учетных данных для: %s", host)
 
-	// Запускаем в отдельной горутине, но синхронизируем с главным потоком
-	go func() {
-		const MAX_UNAME = 256
-		const MAX_PWD = 256
+	// PowerShell скрипт с графическим интерфейсом
+	script := fmt.Sprintf(`
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "WebDAV Drive - Вход"
+    $form.Size = New-Object System.Drawing.Size(400, 220)
+    $form.StartPosition = "CenterScreen"
+    $form.TopMost = $true
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    
+    # Информация о сервере
+    $label = New-Object System.Windows.Forms.Label
+    $label.Location = New-Object System.Drawing.Point(10, 10)
+    $label.Size = New-Object System.Drawing.Size(360, 40)
+    $label.Text = "Сервер: %s"
+    
+    # Поле для имени пользователя
+    $userLabel = New-Object System.Windows.Forms.Label
+    $userLabel.Location = New-Object System.Drawing.Point(10, 60)
+    $userLabel.Size = New-Object System.Drawing.Size(120, 20)
+    $userLabel.Text = "Имя пользователя:"
+    
+    $userBox = New-Object System.Windows.Forms.TextBox
+    $userBox.Location = New-Object System.Drawing.Point(140, 60)
+    $userBox.Size = New-Object System.Drawing.Size(200, 20)
+    
+    # Поле для пароля
+    $passLabel = New-Object System.Windows.Forms.Label
+    $passLabel.Location = New-Object System.Drawing.Point(10, 90)
+    $passLabel.Size = New-Object System.Drawing.Size(120, 20)
+    $passLabel.Text = "Пароль:"
+    
+    $passBox = New-Object System.Windows.Forms.TextBox
+    $passBox.Location = New-Object System.Drawing.Point(140, 90)
+    $passBox.Size = New-Object System.Drawing.Size(200, 20)
+    $passBox.PasswordChar = '*'
+    
+    # Кнопки
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Location = New-Object System.Drawing.Point(140, 130)
+    $okButton.Size = New-Object System.Drawing.Size(75, 30)
+    $okButton.Text = "OK"
+    
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(225, 130)
+    $cancelButton.Size = New-Object System.Drawing.Size(75, 30)
+    $cancelButton.Text = "Отмена"
+    
+    # Добавляем элементы
+    $form.Controls.Add($label)
+    $form.Controls.Add($userLabel)
+    $form.Controls.Add($userBox)
+    $form.Controls.Add($passLabel)
+    $form.Controls.Add($passBox)
+    $form.Controls.Add($okButton)
+    $form.Controls.Add($cancelButton)
+    
+    # Результат
+    $script:result = $null
+    
+    $okButton.Add_Click({
+        if ($userBox.Text -ne "" -and $passBox.Text -ne "") {
+            $script:result = @($userBox.Text, $passBox.Text)
+            $form.Close()
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("Заполните все поля", "Ошибка", "OK", "Error")
+        }
+    })
+    
+    $cancelButton.Add_Click({
+        $form.Close()
+    })
+    
+    # Фокус
+    $form.Add_Shown({
+        $userBox.Focus()
+    })
+    
+    # Показываем форму
+    $form.ShowDialog() | Out-Null
+    
+    # Возвращаем результат
+    if ($script:result -ne $null) {
+        Write-Output $script:result[0]
+        Write-Output $script:result[1]
+    }
+    `, host)
 
-		var unameBuf [MAX_UNAME]uint16
-		var pwdBuf [MAX_PWD]uint16
+	// Запускаем PowerShell
+	cmd := exec.Command("powershell",
+		"-ExecutionPolicy", "Bypass",
+		"-NoProfile",
+		"-WindowStyle", "Normal",
+		"-Command", script)
 
-		caption := "WebDAV Drive"
-		message := "Введите учётные данные для доступа к WebDAV-серверу"
+	output, err := cmd.Output()
 
-		var creduiInfo CREDUI_INFO
-		creduiInfo.cbSize = uint32(unsafe.Sizeof(creduiInfo))
-
-		// Преобразуем строки в UTF16
-		captionPtr, _ := syscall.UTF16PtrFromString(caption)
-		messagePtr, _ := syscall.UTF16PtrFromString(message)
-		hostPtr, _ := syscall.UTF16PtrFromString(host)
-
-		creduiInfo.pszCaptionText = captionPtr
-		creduiInfo.pszMessageText = messagePtr
-
-		flags := CREDUI_FLAGS_ALWAYS_SHOW_UI |
-			CREDUI_FLAGS_GENERIC_CREDENTIALS |
-			CREDUI_FLAGS_DO_NOT_PERSIST |
-			CREDUI_FLAGS_EXCLUDE_CERTIFICATES
-
-		var save uint32
-
-		// Вызываем Windows API
-		ret, _, _ := credUIPromptForCredentials.Call(
-			uintptr(unsafe.Pointer(&creduiInfo)),
-			uintptr(unsafe.Pointer(hostPtr)),
-			0,
-			0,
-			uintptr(unsafe.Pointer(&unameBuf[0])),
-			uintptr(MAX_UNAME),
-			uintptr(unsafe.Pointer(&pwdBuf[0])),
-			uintptr(MAX_PWD),
-			uintptr(unsafe.Pointer(&save)),
-			uintptr(flags),
-		)
-
-		if ret == 0 { // ERROR_SUCCESS
-			username = syscall.UTF16ToString(unameBuf[:])
-			password = syscall.UTF16ToString(pwdBuf[:])
-			ok = username != "" && password != ""
-
-			// Подтверждаем учетные данные
-			if save != 0 && ok {
-				creduiConfirmCredentials.Call(
-					uintptr(unsafe.Pointer(hostPtr)),
-					uintptr(1), // TRUE = подтвердить
-				)
-			}
-		} else {
-			ok = false
+	if err != nil {
+		// Если пользователь закрыл окно - это не ошибка
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			logger.Infof("PowerShell завершился с кодом: %d", exitErr.ExitCode())
 		}
-
-		resultChan <- struct {
-			username, password string
-			ok                 bool
-			err                error
-		}{username, password, ok, nil}
-	}()
-
-	// Ждем результат с таймаутом
-	select {
-	case result := <-resultChan:
-		return result.username, result.password, result.ok, result.err
-	case <-time.After(30 * time.Second):
-		return "", "", false, fmt.Errorf("таймаут ожидания ввода")
+		return "", "", false, nil
 	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) >= 2 {
+		username = strings.TrimSpace(lines[0])
+		password = strings.TrimSpace(lines[1])
+		ok = username != "" && password != ""
+		return username, password, ok, nil
+	}
+
+	return "", "", false, nil
 }
