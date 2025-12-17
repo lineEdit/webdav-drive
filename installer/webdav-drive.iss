@@ -14,7 +14,7 @@ SetupIconFile=setup-icon.ico
 UninstallDisplayIcon={app}\webdav-drive.exe
 LicenseFile=..\LICENSE
 UsedUserAreasWarning=no
-OutputDir=Output/
+OutputDir=.
 
 [Files]
 Source: "..\src\webdav-drive.exe"; DestDir: "{app}"; Flags: ignoreversion
