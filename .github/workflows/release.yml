@@ -31,13 +31,45 @@ jobs:
       - name: Build Go executable
         run: go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.event.release.tag_name }}" -o src/webdav-drive.exe ./src
 
+      - name: Verify executable exists
+        run: |
+          if not exist "src\webdav-drive.exe" (
+            echo "❌ Executable not found!"
+            exit 1
+          ) else (
+            echo "✅ Executable found: src\webdav-drive.exe"
+          )
+
       - name: Create SHA256 checksum
         run: |
           cd src
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
 
+      - name: Prepare files for Inno Setup
+        run: |
+          # Создаем bin директорию и копируем туда exe
+          mkdir bin
+          copy src\webdav-drive.exe bin\ > nul
+          echo "✅ Copied executable to bin\ directory"
+
       - name: Build Inno Setup installer
-        run: iscc "installer\webdav-drive.iss"
+        run: |
+          echo "Current directory: %CD%"
+          dir
+          echo "Checking installer directory..."
+          dir installer\
+          echo "Running Inno Setup..."
+          iscc "installer\webdav-drive.iss"
+          echo "Checking for setup file..."
+          if exist "webdav-drive-setup.exe" (
+            echo "✅ Setup file created: webdav-drive-setup.exe"
+            dir webdav-drive-setup.exe
+          ) else (
+            echo "❌ Setup file NOT created!"
+            echo "Available files:"
+            dir
+            exit 1
+          )
         shell: cmd
 
       - name: Upload portable executable
