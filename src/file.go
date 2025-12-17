@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -90,12 +88,7 @@ func loadConfig() (*Config, error) {
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		// Если не парсится как JSON, пробуем как YAML (для обратной совместимости)
-		if yamlErr := yaml.Unmarshal(data, &cfg); yamlErr != nil {
-			return nil, fmt.Errorf("не удалось загрузить конфиг: %v (YAML: %v)", err, yamlErr)
-		}
-		// После успешной загрузки YAML, сохраняем как JSON
-		err := saveConfig(&cfg)
+		err := saveDefaultConfig()
 		if err != nil {
 			return nil, err
 		}
