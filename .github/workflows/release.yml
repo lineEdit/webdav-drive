@@ -36,16 +36,6 @@ jobs:
           cd src
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
 
-      - name: Upload portable executable
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./src/webdav-drive.exe
-          asset_name: webdav-drive.exe
-          asset_content_type: application/octet-stream
-
       - name: Build Inno Setup installer
         run: iscc "installer\webdav-drive.iss"
         shell: cmd
@@ -59,6 +49,16 @@ jobs:
           asset_path: ./src/webdav-drive.exe.sha256
           asset_name: webdav-drive.exe.sha256
           asset_content_type: text/plain
+
+      - name: Upload portable executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./src/webdav-drive.exe
+          asset_name: webdav-drive.exe
+          asset_content_type: application/octet-stream
 
       - name: Upload installer
         uses: actions/upload-release-asset@v1
