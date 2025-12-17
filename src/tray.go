@@ -43,6 +43,7 @@ func onReady() {
 	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.json")
 	mLogs := systray.AddMenuItem("Логи", "Посмотреть webdav-drive.log")
 	mReset := systray.AddMenuItem("Сбросить пароль", "Удалить учётные данные")
+	mCheckUpdate := systray.AddMenuItem("Проверить обновления", "Проверить наличие новой версии")
 	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
 
 	// Горутина обработки
@@ -87,6 +88,9 @@ func onReady() {
 				mOpen.Disable()
 				mConnectDisable.Hide()
 				mConnectEnable.Show()
+
+			case <-mCheckUpdate.ClickedCh:
+				checkForUpdates()
 
 			case <-mExit.ClickedCh:
 				systray.Quit()

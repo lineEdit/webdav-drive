@@ -9,7 +9,7 @@ import (
 )
 
 // Версия устанавливается через -X main.version= при сборке
-var version = "1.0.0-dev"
+var version = "0.0.0-dev"
 
 //go:embed assets/icon-on.ico
 var iconOn []byte

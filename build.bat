@@ -1,11 +1,15 @@
 @echo off
 setlocal
 
-set VERSION=0.0.1-dev
+set VERSION=0.0.4
 set OUTPUT=src\webdav-drive.exe
 
-echo [1/2] Building...
+echo Building v%VERSION%...
 go build -ldflags="-H windowsgui -s -w -X main.version=%VERSION%" -o "%OUTPUT%" ./src
+if errorlevel 1 exit /b 1
 
-echo [2/2] Finish!
-echo   App: %OUTPUT%
+echo Creating installer...
+iscc "installer\webdav-drive.iss"
+if errorlevel 1 exit /b 1
+
+echo Build completed.

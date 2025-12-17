@@ -21,10 +21,9 @@ import (
 )
 
 const (
-	githubRepo     = "lineEdit/webdav-drive"
-	appName        = "webdav-drive"
-	assetSuffix    = "_windows_amd64.exe"
-	currentVersion = "1.0.0" //TODO ← обновляй при каждом релизе
+	githubRepo  = "lineEdit/webdav-drive"
+	appName     = "webdav-drive"
+	assetSuffix = "_windows_amd64.exe"
 )
 
 // GitHubRelease Структура ответа GitHub Releases API
@@ -78,7 +77,7 @@ func checkForUpdates() {
 
 	latestTag := release.TagName
 	latestVersion := strings.TrimPrefix(latestTag, "v")
-	current := strings.TrimPrefix(currentVersion, "v")
+	current := strings.TrimPrefix(version, "v")
 
 	if latestVersion == current {
 		logger.Info("Обновлений нет")
