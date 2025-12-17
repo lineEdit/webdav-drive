@@ -1,55 +1,47 @@
 name: Build and Release (Beta)
+
 on:
   release:
     types: [published]
+
 permissions:
   contents: write
+
 env:
   OUTPUT_EXE: webdav-drive.exe
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+
       - name: Install Inno Setup
         run: choco install innosetup -y
+
       - name: Tidy dependencies
         run: go mod tidy
+
       - name: Build Go executable
         run: go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.event.release.tag_name }}" -o src/webdav-drive.exe ./src
-      - name: Verify executable exists
-        run: |
-          if (-not (Test-Path "src\webdav-drive.exe")) {
-            Write-Error "❌ Executable not found!"
-            exit 1
-          }
-          Write-Host "✅ Executable found"
+
       - name: Create SHA256 checksum
         run: |
           cd src
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
+
       - name: Build Inno Setup installer
         run: |
-          Write-Host "Building installer..."
-          iscc "installer\webdav-drive.iss"
-          
-          $rootPath = "webdav-drive-setup.exe"
-          $installerPath = "installer\webdav-drive-setup.exe"
-          
-          if (Test-Path $rootPath) {
-            Write-Host "✅ Installer created in root"
-          } elseif (Test-Path $installerPath) {
-            Copy-Item $installerPath $rootPath -Force
-            Write-Host "✅ Installer copied to root"
-          } else {
-            Write-Error "❌ Installer not found!"
-            exit 1
-          }
+          cd installer
+          iscc webdav-drive.iss
+        shell: cmd
+
       - name: Upload portable executable
         uses: actions/upload-release-asset@v1
         env:
@@ -59,6 +51,7 @@ jobs:
           asset_path: ./src/webdav-drive.exe
           asset_name: webdav-drive.exe
           asset_content_type: application/octet-stream
+
       - name: Upload SHA256 checksum
         uses: actions/upload-release-asset@v1
         env:
@@ -68,12 +61,13 @@ jobs:
           asset_path: ./src/webdav-drive.exe.sha256
           asset_name: webdav-drive.exe.sha256
           asset_content_type: text/plain
+
       - name: Upload installer
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./webdav-drive-setup.exe
+          asset_path: ./installer/Output/webdav-drive-setup.exe
           asset_name: webdav-drive-setup.exe
           asset_content_type: application/octet-stream
