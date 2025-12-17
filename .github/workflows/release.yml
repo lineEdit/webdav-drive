@@ -14,42 +14,62 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Получить полную историю для корректного определения версии
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
 
       - name: Install Inno Setup
         run: |
           choco install innosetup -y
 
-      - name: Tidy dependencies (ensure go.sum is valid)
-        run: go mod tidy
+      - name: Initialize Go module and download dependencies
+        run: |
+          # Убедимся, что мы в корне проекта
+          cd ${{ github.workspace }}
+          go mod tidy
+          go mod download
 
       - name: Build Go executable
         run: |
-          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o src/${{ env.OUTPUT_EXE }} ./src
+          cd ${{ github.workspace }}
+          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o ${{ env.OUTPUT_EXE }} ./src
 
       - name: Create SHA256 checksum
         run: |
-          cd src
+          cd ${{ github.workspace }}
           certutil -hashfile ${{ env.OUTPUT_EXE }} SHA256 | findstr /r "[0-9a-fA-F]" > ${{ env.OUTPUT_EXE }}.sha256
 
       - name: Verify executable exists
         run: |
-          if not exist "src\${{ env.OUTPUT_EXE }}" (
+          cd ${{ github.workspace }}
+          if not exist "${{ env.OUTPUT_EXE }}" (
             echo "Executable not found!"
             exit 1
           )
 
+      - name: Prepare installer files
+        run: |
+          cd ${{ github.workspace }}
+          # Создаем директорию bin, если её нет
+          if not exist "bin" mkdir bin
+          # Копируем exe файл в bin для Inno Setup
+          copy ${{ env.OUTPUT_EXE }} bin\ > nul
+          # Также копируем в src для совместимости
+          copy ${{ env.OUTPUT_EXE }} src\ > nul
+
       - name: Build Inno Setup installer
         run: |
+          cd ${{ github.workspace }}
           iscc "installer\webdav-drive.iss"
         shell: cmd
 
       - name: Verify installer exists
         run: |
+          cd ${{ github.workspace }}
           if not exist "webdav-drive-setup.exe" (
             echo "Installer not found!"
             exit 1
@@ -61,7 +81,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./src/${{ env.OUTPUT_EXE }}
+          asset_path: ${{ github.workspace }}/${{ env.OUTPUT_EXE }}
           asset_name: webdav-drive.exe
           asset_content_type: application/octet-stream
 
@@ -71,7 +91,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./src/${{ env.OUTPUT_EXE }}.sha256
+          asset_path: ${{ github.workspace }}/${{ env.OUTPUT_EXE }}.sha256
           asset_name: webdav-drive.exe.sha256
           asset_content_type: text/plain
 
@@ -81,6 +101,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./webdav-drive-setup.exe
+          asset_path: ${{ github.workspace }}/webdav-drive-setup.exe
           asset_name: webdav-drive-setup.exe
           asset_content_type: application/octet-stream
