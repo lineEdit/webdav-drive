@@ -37,38 +37,8 @@ jobs:
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
 
       - name: Build Inno Setup installer
-        run: |
-          Write-Host "=== Building Inno Setup installer ==="
-          
-          # Переходим в папку installer для сборки
-          Set-Location installer
-          
-          Write-Host "Текущая директория: $(Get-Location)"
-          Write-Host "Содержимое папки:"
-          Get-ChildItem
-          
-          Write-Host "Запуск Inno Setup..."
-          iscc "webdav-drive.iss"
-          
-          Write-Host "=== Поиск созданного файла ==="
-          
-          # С OutputDir=. файл должен быть в текущей папке (installer)
-          if (Test-Path "webdav-drive-setup.exe") {
-            Write-Host "✅ Файл найден в папке installer: webdav-drive-setup.exe"
-            # Копируем в корень для удобства загрузки
-            Copy-Item "webdav-drive-setup.exe" "..\webdav-drive-setup.exe"
-          } else {
-            Write-Host "❌ Файл НЕ найден в папке installer"
-            Write-Host "Поиск во всех подпапках..."
-            Get-ChildItem -Recurse -Filter "*setup*.exe" | ForEach-Object {
-              Write-Host "Найден файл: $($_.FullName)"
-            }
-            exit 1
-          }
-          
-          # Возвращаемся в корень
-          Set-Location ..
-        shell: pwsh
+        run: iscc "installer\webdav-drive.iss"
+        shell: cmd
 
       - name: Upload SHA256 checksum
         uses: actions/upload-release-asset@v1
