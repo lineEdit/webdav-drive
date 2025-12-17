@@ -33,12 +33,12 @@ jobs:
 
       - name: Verify executable exists
         run: |
-          if not exist "src\webdav-drive.exe" (
-            echo "❌ Executable not found!"
+          if (-not (Test-Path "src\webdav-drive.exe")) {
+            Write-Error "❌ Executable not found!"
             exit 1
-          ) else (
-            echo "✅ Executable found: src\webdav-drive.exe"
-          )
+          } else {
+            Write-Host "✅ Executable found: src\webdav-drive.exe"
+          }
 
       - name: Create SHA256 checksum
         run: |
@@ -48,29 +48,27 @@ jobs:
       - name: Prepare files for Inno Setup
         run: |
           # Создаем bin директорию и копируем туда exe
-          mkdir bin
-          copy src\webdav-drive.exe bin\ > nul
-          echo "✅ Copied executable to bin\ directory"
+          New-Item -ItemType Directory -Force -Path "bin" | Out-Null
+          Copy-Item "src\webdav-drive.exe" "bin\" -Force
+          Write-Host "✅ Copied executable to bin\ directory"
 
       - name: Build Inno Setup installer
         run: |
-          echo "Current directory: %CD%"
-          dir
-          echo "Checking installer directory..."
-          dir installer\
-          echo "Running Inno Setup..."
+          Write-Host "Current directory: $(Get-Location)"
+          Get-ChildItem
+          Write-Host "Checking installer directory..."
+          Get-ChildItem "installer\"
+          Write-Host "Running Inno Setup..."
           iscc "installer\webdav-drive.iss"
-          echo "Checking for setup file..."
-          if exist "webdav-drive-setup.exe" (
-            echo "✅ Setup file created: webdav-drive-setup.exe"
-            dir webdav-drive-setup.exe
-          ) else (
-            echo "❌ Setup file NOT created!"
-            echo "Available files:"
-            dir
+          if (Test-Path "webdav-drive-setup.exe") {
+            Write-Host "✅ Setup file created: webdav-drive-setup.exe"
+            Get-Item "webdav-drive-setup.exe"
+          } else {
+            Write-Error "❌ Setup file NOT created!"
+            Write-Host "Available files:"
+            Get-ChildItem
             exit 1
-          )
-        shell: cmd
+          }
 
       - name: Upload portable executable
         uses: actions/upload-release-asset@v1
