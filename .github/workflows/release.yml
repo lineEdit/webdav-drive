@@ -37,9 +37,7 @@ jobs:
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
 
       - name: Build Inno Setup installer
-        run: |
-          cd installer
-          iscc webdav-drive.iss
+        run: iscc "installer\webdav-drive.iss"
         shell: cmd
 
       - name: Upload portable executable
