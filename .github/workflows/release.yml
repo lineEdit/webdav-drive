@@ -1,4 +1,4 @@
-name: Build, Sign (SignPath) and Release
+name: Build and Release (Beta)
 
 on:
   release:
@@ -6,10 +6,10 @@ on:
 
 env:
   APP_NAME: webdav-drive
-  OUTPUT_EXE: webdav-drive-windows-amd64.exe
+  OUTPUT_EXE: webdav-drive.exe
 
 jobs:
-  build-and-sign:
+  build:
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -20,10 +20,13 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup -y
+
       - name: Build Go executable
         run: |
-          cd src
-          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.event.release.tag_name }}" -o ../bin/${{ env.OUTPUT_EXE }}
+          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o bin/${{ env.OUTPUT_EXE }} ./src
 
       - name: Create SHA256 checksum
         run: |
@@ -35,32 +38,14 @@ jobs:
           iscc "installer\webdav-drive.iss"
         shell: cmd
 
-      - name: Sign binaries via SignPath
-        uses: signpath/github-action@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          project-slug: ${{ secrets.SIGNPATH_PROJECT_ID }}
-          input-artifact-path: bin/${{ env.OUTPUT_EXE }}
-          output-artifact-path: bin/${{ env.OUTPUT_EXE }}
-          wait-for-completion: true
-
-      - name: Sign installer (optional but recommended)
-        uses: signpath/github-action@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          project-slug: ${{ secrets.SIGNPATH_PROJECT_ID }}
-          input-artifact-path: installer\webdav-drive-setup.exe
-          output-artifact-path: installer\webdav-drive-setup.exe
-          wait-for-completion: true
-
-      - name: Upload release assets
+      - name: Upload portable executable
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./bin/${{ env.OUTPUT_EXE }}
-          asset_name: ${{ env.APP_NAME }}_${{ github.event.release.tag_name }}_windows_amd64.exe
+          asset_name: webdav-drive.exe
           asset_content_type: application/octet-stream
 
       - name: Upload SHA256 checksum
@@ -70,15 +55,15 @@ jobs:
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./bin/${{ env.OUTPUT_EXE }}.sha256
-          asset_name: ${{ env.APP_NAME }}_${{ github.event.release.tag_name }}_windows_amd64.exe.sha256
+          asset_name: webdav-drive.exe.sha256
           asset_content_type: text/plain
 
-      - name: Upload signed installer
+      - name: Upload installer
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./installer/webdav-drive-setup.exe
+          asset_path: ./webdav-drive-setup.exe
           asset_name: webdav-drive-setup.exe
           asset_content_type: application/octet-stream
