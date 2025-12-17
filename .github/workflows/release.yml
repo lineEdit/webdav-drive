@@ -28,7 +28,7 @@ jobs:
       - name: Tidy dependencies
         run: go mod tidy
 
-      - name: Build Go executable
+      - name: Build Go executable (portable)
         run: go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.event.release.tag_name }}" -o src/webdav-drive.exe ./src
 
       - name: Create SHA256 checksum
@@ -40,32 +40,15 @@ jobs:
         run: iscc "installer\webdav-drive.iss"
         shell: cmd
 
-      - name: Upload SHA256 checksum
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./src/webdav-drive.exe.sha256
-          asset_name: webdav-drive.exe.sha256
-          asset_content_type: text/plain
+      # === ЗАГРУЗКА АССЕТОВ ===
 
-      - name: Upload portable executable
-        uses: actions/upload-release-asset@v1
+      - name: Upload files executable
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          files: |
+            src/webdav-drive.exe
+            src/webdav-drive.exe.sha256
+            installer/webdav-drive-setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./src/webdav-drive.exe
-          asset_name: webdav-drive.exe
-          asset_content_type: application/octet-stream
-
-      - name: Upload installer
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./installer/webdav-drive-setup.exe
-          asset_name: webdav-drive-setup.exe
-          asset_content_type: application/octet-stream
