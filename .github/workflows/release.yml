@@ -54,20 +54,27 @@ jobs:
 
       - name: Build Inno Setup installer
         run: |
-          Write-Host "Current directory: $(Get-Location)"
-          Get-ChildItem
-          Write-Host "Checking installer directory..."
-          Get-ChildItem "installer\"
           Write-Host "Running Inno Setup..."
           iscc "installer\webdav-drive.iss"
-          if (Test-Path "webdav-drive-setup.exe") {
-            Write-Host "✅ Setup file created: webdav-drive-setup.exe"
-            Get-Item "webdav-drive-setup.exe"
+          
+          # Проверяем, где создался установщик
+          $setupPath1 = "installer\webdav-drive-setup.exe"
+          $setupPath2 = "webdav-drive-setup.exe"
+          
+          if (Test-Path $setupPath1) {
+              Write-Host "✅ Setup file created in installer\ directory"
+              # Копируем в корень для совместимости с остальным workflow
+              Copy-Item $setupPath1 $setupPath2 -Force
+              Write-Host "✅ Copied to root directory"
+              Get-Item $setupPath2
+          } elseif (Test-Path $setupPath2) {
+              Write-Host "✅ Setup file already in root directory"
+              Get-Item $setupPath2
           } else {
-            Write-Error "❌ Setup file NOT created!"
-            Write-Host "Available files:"
-            Get-ChildItem
-            exit 1
+              Write-Error "❌ Setup file NOT found anywhere!"
+              Write-Host "Searching in installer directory:"
+              Get-ChildItem "installer\"
+              exit 1
           }
 
       - name: Upload portable executable
