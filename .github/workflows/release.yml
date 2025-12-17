@@ -36,46 +36,22 @@ jobs:
           if (-not (Test-Path "src\webdav-drive.exe")) {
             Write-Error "❌ Executable not found!"
             exit 1
-          } else {
-            Write-Host "✅ Executable found: src\webdav-drive.exe"
           }
+          Write-Host "✅ Executable found"
 
       - name: Create SHA256 checksum
         run: |
           cd src
           certutil -hashfile webdav-drive.exe SHA256 | findstr /r "[0-9a-fA-F]" > webdav-drive.exe.sha256
 
-      - name: Prepare files for Inno Setup
-        run: |
-          # Создаем bin директорию и копируем туда exe
-          New-Item -ItemType Directory -Force -Path "bin" | Out-Null
-          Copy-Item "src\webdav-drive.exe" "bin\" -Force
-          Write-Host "✅ Copied executable to bin\ directory"
-
       - name: Build Inno Setup installer
         run: |
-          Write-Host "Running Inno Setup..."
           iscc "installer\webdav-drive.iss"
-          
-          # Проверяем, где создался установщик
-          $setupPath1 = "installer\webdav-drive-setup.exe"
-          $setupPath2 = "webdav-drive-setup.exe"
-          
-          if (Test-Path $setupPath1) {
-              Write-Host "✅ Setup file created in installer\ directory"
-              # Копируем в корень для совместимости с остальным workflow
-              Copy-Item $setupPath1 $setupPath2 -Force
-              Write-Host "✅ Copied to root directory"
-              Get-Item $setupPath2
-          } elseif (Test-Path $setupPath2) {
-              Write-Host "✅ Setup file already in root directory"
-              Get-Item $setupPath2
-          } else {
-              Write-Error "❌ Setup file NOT found anywhere!"
-              Write-Host "Searching in installer directory:"
-              Get-ChildItem "installer\"
-              exit 1
+          if (-not (Test-Path "webdav-drive-setup.exe")) {
+            Write-Error "❌ Installer not created!"
+            exit 1
           }
+          Write-Host "✅ Installer built"
 
       - name: Upload portable executable
         uses: actions/upload-release-asset@v1
