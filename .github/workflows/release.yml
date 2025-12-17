@@ -24,19 +24,36 @@ jobs:
         run: |
           choco install innosetup -y
 
+      - name: Tidy dependencies (ensure go.sum is valid)
+        run: go mod tidy
+
       - name: Build Go executable
         run: |
-          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o bin/${{ env.OUTPUT_EXE }} ./src
+          go build -ldflags="-H windowsgui -s -w -X main.version=${{ github.ref_name }}" -o src/${{ env.OUTPUT_EXE }} ./src
 
       - name: Create SHA256 checksum
         run: |
-          cd bin
+          cd src
           certutil -hashfile ${{ env.OUTPUT_EXE }} SHA256 | findstr /r "[0-9a-fA-F]" > ${{ env.OUTPUT_EXE }}.sha256
+
+      - name: Verify executable exists
+        run: |
+          if not exist "src\${{ env.OUTPUT_EXE }}" (
+            echo "Executable not found!"
+            exit 1
+          )
 
       - name: Build Inno Setup installer
         run: |
           iscc "installer\webdav-drive.iss"
         shell: cmd
+
+      - name: Verify installer exists
+        run: |
+          if not exist "webdav-drive-setup.exe" (
+            echo "Installer not found!"
+            exit 1
+          )
 
       - name: Upload portable executable
         uses: actions/upload-release-asset@v1
@@ -44,7 +61,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./bin/${{ env.OUTPUT_EXE }}
+          asset_path: ./src/${{ env.OUTPUT_EXE }}
           asset_name: webdav-drive.exe
           asset_content_type: application/octet-stream
 
@@ -54,7 +71,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./bin/${{ env.OUTPUT_EXE }}.sha256
+          asset_path: ./src/${{ env.OUTPUT_EXE }}.sha256
           asset_name: webdav-drive.exe.sha256
           asset_content_type: text/plain
 
