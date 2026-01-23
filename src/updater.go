@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -58,9 +59,9 @@ func checkForUpdates() {
 		return
 	}
 	defer func(Body io.ReadCloser) {
-		err = Body.Close()
+		err := Body.Close()
 		if err != nil {
-			logger.Warning(err)
+			log.Fatal(err)
 		}
 	}(resp.Body)
 
@@ -99,9 +100,9 @@ func checkForUpdates() {
 	}
 
 	logger.Infof("Доступна новая версия: %s", latestVersion)
+	logger.Infof("Скачивание с: %s", downloadURL)
 	showNotification("WebDAV Drive", fmt.Sprintf("Доступна новая версия: %s", latestVersion))
 
-	// Добавляем пункт в трей
 	menuItem := systray.AddMenuItem(
 		fmt.Sprintf("🔄 Обновить до %s", latestVersion),
 		"Скачать и установить обновление",

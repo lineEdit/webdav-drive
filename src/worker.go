@@ -1,19 +1,22 @@
+// worker.go
 package main
 
 import (
-	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/getlantern/systray"
 )
 
-// Трей-режим
+// Трей-режим — основной режим работы
 func runTrayMode() {
-	connected := isDriveMapped(globalCfg.DriveLetter)
-	if connected {
-		logger.Info("Диск уже подключён при запуске")
+	// Загружаем конфиг перед запуском трея
+	cfg, err := loadConfig()
+	if err != nil {
+		logger.Fatalf("Не удалось загрузить config.json: %v", err)
 	}
+	globalCfg = cfg
 
 	// Фоновая проверка обновлений
 	go func() {
@@ -24,55 +27,46 @@ func runTrayMode() {
 	systray.Run(onReady, onExit)
 }
 
-// CLI-режим (для первоначальной настройки)
+// CLI-режим — только для первоначальной настройки
 func runCLIMode() {
-	if _, err := os.Stat(getConfigPath()); os.IsNotExist(err) {
-		logger.Println("🆕 Первый запуск: создаю config.json...")
-		if err = saveDefaultConfig(); err != nil {
-			logger.Printf("❌ Ошибка создания конфига: %v\n", err)
+	configPath := getConfigPath()
+
+	// Если конфига нет — создаём шаблон
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		logger.Info("🆕 Первый запуск: создаю config.json...")
+		if err := saveDefaultConfig(); err != nil {
+			logger.Errorf("❌ Ошибка создания конфига: %v", err)
 			return
 		}
-		logger.Println("✅ config.json создан. Отредактируйте его и запустите снова.")
+		logger.Info("✅ config.json создан. Отредактируйте его вручную и запустите приложение снова.")
 		return
 	}
 
+	// Загружаем конфиг
 	cfg, err := loadConfig()
 	if err != nil {
-		logger.Printf("❌ Ошибка загрузки конфига: %v\n", err)
+		logger.Errorf("❌ Ошибка загрузки конфига: %v", err)
 		return
 	}
 
-	if err = connectDrive(cfg); err == nil {
-		logger.Println("✅ Диск подключён!")
+	// Нормализуем URL (гарантируем завершающий слэш)
+	webdavURL := cfg.WebDAVURL
+	if !strings.HasSuffix(webdavURL, "/") {
+		webdavURL += "/"
+	}
+	cfg.WebDAVURL = webdavURL
+
+	// Пробуем подключиться напрямую
+	// Windows сам запросит учётные данные, если их нет
+	logger.Info("Подключение к WebDAV...")
+	if err := connectDrive(cfg); err != nil {
+		logger.Errorf("❌ Подключение не удалось: %v", err)
+		logger.Info("💡 Убедитесь, что:")
+		logger.Info("   - URL заканчивается на /")
+		logger.Info("   - Сервер доступен")
+		logger.Info("   - Учётные данные сохранены в Windows Credential Manager")
 		return
 	}
 
-	logger.Println("❌ Подключение не удалось. Введите логин/пароль.")
-	//username := readInput("📧 Логин: ")
-	//password := readInput("🔑 Пароль: ")
-	u, err := url.Parse(cfg.WebDAVURL)
-	var host string
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		host = u.Host
-	}
-	username, password, ok, err := promptCredentials(host)
-	if err != nil || !ok {
-		logger.Println("❌ Отменено пользователем или ошибка ввода")
-		return
-	}
-
-	logger.Println("💾 Сохраняю в Windows Credential Manager...")
-	if err = saveCredentials(cfg.WebDAVURL, username, password); err != nil {
-		logger.Printf("❌ Ошибка сохранения: %v\n", err)
-		return
-	}
-
-	logger.Println("🔁 Повторное подключение...")
-	if err = connectDrive(cfg); err != nil {
-		logger.Printf("❌ Ошибка подключения: %v\n", err)
-		return
-	}
-	logger.Println("✅ Готово!")
+	logger.Info("✅ Диск успешно подключён!")
 }

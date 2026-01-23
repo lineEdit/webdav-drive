@@ -3,17 +3,21 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/getlantern/systray"
+	"golang.org/x/sys/windows"
 )
 
 // Обработчик трея
 func onReady() {
+	if globalCfg == nil {
+		logger.Fatal("Конфигурация не загружена!")
+	}
+
 	connected := isDriveMapped(globalCfg.DriveLetter)
 
 	if connected {
@@ -37,12 +41,16 @@ func onReady() {
 
 	mOpen := systray.AddMenuItem("Проводник", "Открыть в Проводнике")
 	// Скрываем ненужный
-	if !connected {
-		mOpen.Disable()
+	// В начале onReady()
+	if connected {
+		mConnectEnable.Disable()
+		mConnectDisable.Enable()
+	} else {
+		mConnectEnable.Enable()
+		mConnectDisable.Disable()
 	}
 	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.json")
 	mLogs := systray.AddMenuItem("Логи", "Посмотреть webdav-drive.log")
-	mReset := systray.AddMenuItem("Сбросить пароль", "Удалить учётные данные")
 	mCheckUpdate := systray.AddMenuItem("Проверить обновления", "Проверить наличие новой версии")
 	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
 
@@ -54,9 +62,8 @@ func onReady() {
 				if connectWithLogging() {
 					systray.SetIcon(iconOn)
 					mOpen.Enable()
-					// Переключаем: скрываем "Подключить", показываем "Отключить"
-					mConnectEnable.Hide()
-					mConnectDisable.Show()
+					mConnectEnable.Disable()
+					mConnectDisable.Enable()
 				}
 
 			case <-mConnectDisable.ClickedCh:
@@ -68,9 +75,8 @@ func onReady() {
 					logger.Info("Диск отключён")
 					systray.SetIcon(iconOff)
 					mOpen.Disable()
-					// Переключаем: скрываем "Отключить", показываем "Подключить"
-					mConnectDisable.Hide()
-					mConnectEnable.Show()
+					mConnectDisable.Disable()
+					mConnectEnable.Enable()
 				}
 
 			case <-mOpen.ClickedCh:
@@ -81,13 +87,6 @@ func onReady() {
 
 			case <-mLogs.ClickedCh:
 				openLogs()
-
-			case <-mReset.ClickedCh:
-				resetWithLogging()
-				systray.SetIcon(iconOff)
-				mOpen.Disable()
-				mConnectDisable.Hide()
-				mConnectEnable.Show()
 
 			case <-mCheckUpdate.ClickedCh:
 				checkForUpdates()
@@ -110,34 +109,65 @@ func isDriveMapped(drive string) bool {
 	return strings.Contains(string(out), drive)
 }
 
+// setDriveLabel устанавливает понятное имя диска в Проводнике через реестр Windows
+func setDriveLabel(driveLetter, label string) error {
+	// Убираем двоеточие, если есть: "N:" → "N"
+	drive := strings.TrimSuffix(driveLetter, ":")
+	if drive == "" {
+		return fmt.Errorf("некорректная буква диска: %s", driveLetter)
+	}
+	keyPath := fmt.Sprintf(`HKEY_CURRENT_USER\Network\%s`, drive)
+	cmd := exec.Command("reg", "add", keyPath, "/v", "DescriptiveName", "/t", "REG_SZ", "/d", label, "/f")
+	return cmd.Run()
+}
+
 // Подключение диска
+// connectDrive подключает WebDAV-диск и устанавливает понятное имя
 func connectDrive(cfg *Config) error {
-	if isDriveMapped(cfg.DriveLetter) {
-		logger.Infof("Диск %s уже подключен", cfg.DriveLetter)
+	drive := cfg.DriveLetter
+	if !strings.HasSuffix(drive, ":") {
+		drive += ":"
+	}
+
+	if isDriveMapped(drive) {
+		logger.Infof("Диск %s уже подключен", drive)
 		return nil
 	}
 
-	logger.Infof("Подключение диска %s к URL: %s", cfg.DriveLetter, cfg.WebDAVURL)
+	// Формируем понятное имя на основе URL
+	var label string
+	if u, err := url.Parse(cfg.WebDAVURL); err == nil {
+		label = fmt.Sprintf("WebDAV Drive — %s", u.Host)
+	} else {
+		label = "WebDAV Drive"
+		logger.Warnf("Не удалось распарсить URL для метки: %v", err)
+	}
 
-	cmd := exec.Command("net", "use", cfg.DriveLetter, cfg.WebDAVURL, "/persistent:yes")
+	logger.Infof("Подключение диска %s к URL: %s", drive, cfg.WebDAVURL)
 
-	// Захватываем stdout и stderr для отладки
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	cmd := exec.Command("net", "use", drive, cfg.WebDAVURL, "/persistent:yes")
+
+	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 
 	if err != nil {
 		logger.Errorf("Ошибка подключения диска:")
-		logger.Errorf("  Команда: net use %s %s /persistent:yes", cfg.DriveLetter, cfg.WebDAVURL)
-		logger.Errorf("  Stdout: %s", stdout.String())
-		logger.Errorf("  Stderr: %s", stderr.String())
+		logger.Errorf("  Stderr: %s", strings.TrimSpace(stderr.String()))
 		logger.Errorf("  Ошибка: %v", err)
 		return err
 	}
 
-	logger.Infof("Диск %s успешно подключен", cfg.DriveLetter)
+	logger.Infof("Диск %s успешно подключен", drive)
+
+	// Устанавливаем понятное имя
+	if err := setDriveLabel(drive, label); err != nil {
+		logger.Warnf("Не удалось установить метку диска '%s': %v", label, err)
+	} else {
+		logger.Infof("Метка диска установлена: %s", label)
+	}
+
 	return nil
 }
 
@@ -163,184 +193,31 @@ func onExit() {
 
 func connectWithLogging() bool {
 	logger.Info("Попытка подключения диска...")
-	if isDriveMapped(globalCfg.DriveLetter) {
-		logger.Info("Диск уже подключён")
-		return true
+
+	// Нормализуем URL
+	webdavURL := strings.TrimSpace(globalCfg.WebDAVURL)
+	if !strings.HasSuffix(webdavURL, "/") {
+		webdavURL += "/"
 	}
 
-	// Проверяем, есть ли сохраненные учетные данные
-	if hasCreds, username := checkExistingCredentials(globalCfg.WebDAVURL); hasCreds {
-		logger.Infof("Найдены сохраненные учетные данные для пользователя: %s", username)
+	// Подключаем напрямую — Windows сам запросит логин при необходимости
+	cfg := &Config{
+		DriveLetter: globalCfg.DriveLetter,
+		WebDAVURL:   webdavURL,
 	}
 
-	// Первая попытка (возможно, учётные данные уже есть)
-	if err := connectDrive(globalCfg); err == nil {
-		logger.Info("Диск успешно подключён")
-		return true
-	}
-
-	// Если не удалось — запрашиваем учётные данные
-	logger.Warn("Подключение не удалось. Запрос учётных данных...")
-
-	u, err := url.Parse(globalCfg.WebDAVURL)
-	if err != nil {
-		logger.Errorf("Неверный URL: %v", err)
-		return false
-	}
-	host := u.Host
-
-	// Запрашиваем логин/пароль через GUI
-	username, password, ok, err := promptCredentials(host)
-	if err != nil || !ok {
-		logger.Warn("Отменено пользователем или ошибка ввода")
+	if err := connectDrive(cfg); err != nil {
+		logger.Errorf("Не удалось подключить диск: %v", err)
 		return false
 	}
 
-	// Пробуем подключиться с явными учетными данными
-	logger.Info("Попытка подключения с явными учетными данными...")
-	if err = connectDriveWithCredentials(globalCfg, username, password); err == nil {
-		logger.Info("Диск успешно подключён с явными учетными данными")
-
-		// Сохраняем учетные данные для будущего использования
-		err = saveCredentials(globalCfg.WebDAVURL, username, password)
-		if err != nil {
-			logger.Warning(err.Error())
-			return false
-		}
-		return true
-	}
-
-	// Если не получилось с явными учетными данными, пробуем сохранить и подключиться стандартно
-	logger.Info("Попытка сохранить учетные данные и подключиться...")
-	if err = saveCredentials(globalCfg.WebDAVURL, username, password); err != nil {
-		logger.Errorf("Не удалось сохранить учётные данные: %v", err)
-		return false
-	}
-
-	// Повторная попытка подключения
-	logger.Info("Повторная попытка подключения...")
-	if err = connectDrive(globalCfg); err != nil {
-		logger.Errorf("Ошибка подключения после ввода учётных данных: %v", err)
-
-		// Пробуем альтернативные варианты
-		altHosts := []string{
-			host,
-			"https://" + host,
-			"http://" + host,
-			strings.TrimPrefix(globalCfg.WebDAVURL, "https://"),
-			strings.TrimPrefix(globalCfg.WebDAVURL, "http://"),
-		}
-
-		for _, altHost := range altHosts {
-			if saveCredentials(altHost, username, password) == nil {
-				logger.Infof("Учетные данные сохранены для: %s", altHost)
-				if err = connectDrive(globalCfg); err == nil {
-					logger.Info("Диск успешно подключён после сохранения для альтернативного хоста")
-					return true
-				}
-			}
-		}
-
-		// Удаляем неверные учётные данные
-		for _, altHost := range altHosts {
-			err = deleteCredentials(altHost)
-			if err != nil {
-				logger.Warning(err.Error())
-				return false
-			}
-		}
-
-		return false
-	}
-
-	logger.Info("Диск успешно подключён после ввода учётных данных")
+	logger.Info("Диск успешно подключён")
 	return true
 }
 
-func connectDriveWithCredentials(cfg *Config, username, password string) error {
-	driveLetter := strings.TrimSpace(cfg.DriveLetter)
-	if !strings.HasSuffix(driveLetter, ":") {
-		driveLetter = driveLetter + ":"
-	}
-	driveLetter = strings.ToUpper(driveLetter)
-
-	logger.Infof("Подключение диска %s с явными учетными данными", driveLetter)
-
-	// Пробуем подключиться с явным указанием пароля через net use
-	cmd := exec.Command("net", "use", driveLetter, cfg.WebDAVURL, password, "/user:"+username, "/persistent:yes")
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-
-	if err != nil {
-		logger.Errorf("Ошибка подключения с явными учетными данными:")
-		logger.Errorf("  Stdout: %s", stdout.String())
-		logger.Errorf("  Stderr: %s", stderr.String())
-		logger.Errorf("  Ошибка: %v", err)
-
-		// Пробуем другой формат
-		cmd2 := exec.Command("cmd", "/C",
-			fmt.Sprintf("net use %s %s /user:%s /persistent:yes", driveLetter, cfg.WebDAVURL, username))
-
-		// Пишем пароль в stdin
-		stdin, _ := cmd2.StdinPipe()
-		cmd2.Stdout = &stdout
-		cmd2.Stderr = &stderr
-
-		if err = cmd2.Start(); err == nil {
-			_, err = io.WriteString(stdin, password+"\n")
-			if err != nil {
-				logger.Warning(err.Error())
-				return err
-			}
-			err = stdin.Close()
-			if err != nil {
-				logger.Warning(err.Error())
-				return err
-			}
-			err = cmd2.Wait()
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
-	logger.Infof("Диск %s успешно подключен с явными учетными данными", driveLetter)
-	return nil
-}
-
-func resetWithLogging() {
-	logger.Info("Сброс учётных данных")
-	if err := deleteCredentials(globalCfg.WebDAVURL); err != nil {
-		logger.Warnf("Ошибка сброса: %v", err)
-	}
-}
-
-func checkExistingCredentials(target string) (bool, string) {
-	// Проверяем, есть ли сохраненные учетные данные
-	cmd := exec.Command("cmdkey", "/list")
-	output, err := cmd.Output()
-	if err != nil {
-		return false, ""
-	}
-
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, target) {
-			// Парсим имя пользователя
-			if strings.Contains(line, "Пользователь:") || strings.Contains(line, "User:") {
-				parts := strings.Split(line, ":")
-				if len(parts) > 1 {
-					username := strings.TrimSpace(parts[1])
-					return true, username
-				}
-			}
-		}
-	}
-
-	return false, ""
+// isAlreadyRunning — проверка на уже запущенный экземпляр
+func isAlreadyRunning() bool {
+	mutexName, _ := windows.UTF16PtrFromString("WebDAVDrive_Mutex_" + os.Getenv("USERNAME"))
+	_, err := windows.CreateMutex(nil, false, mutexName)
+	return err != nil // true, если мьютекс уже существует
 }

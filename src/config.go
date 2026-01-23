@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -40,6 +41,50 @@ func getConfigPath() string {
 	return filepath.Join(getAppDataDir(), "config.json")
 }
 
+func saveDefaultConfig() error {
+	cfg := Config{
+		DriveLetter: "N:",
+		WebDAVURL:   "https://cloud.example.com/remote.php/dav/",
+	}
+	data, err := json.MarshalIndent(&cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(getConfigPath(), data, 0600)
+}
+
+func loadConfig() (*Config, error) {
+	data, err := os.ReadFile(getConfigPath())
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	err = json.Unmarshal(data, &cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func openConfig() {
+	logger.Info("Открытие config.json в редакторе")
+	configPath := getConfigPath()
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if err := saveDefaultConfig(); err != nil {
+			log.Fatal(err)
+		}
+		logger.Infof("Создан файл конфигурации: %s", configPath)
+	}
+
+	cmd := exec.Command("notepad", configPath)
+	if err := cmd.Start(); err != nil {
+		cmd = exec.Command("cmd", "/C", "start", "", configPath)
+		_ = cmd.Start()
+	}
+	logger.Infof("Открыт файл: %s", configPath)
+}
+
 func getLogPath() string {
 	return filepath.Join(getAppDataDir(), "webdav-drive.log")
 }
@@ -68,66 +113,4 @@ func initLogger(enableConsole bool) {
 	logger.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
-}
-
-// Загрузка конфига из JSON
-func loadConfig() (*Config, error) {
-	configPath := getConfigPath()
-
-	// Если файла нет, создаем дефолтный
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		if err := saveDefaultConfig(); err != nil {
-			return nil, err
-		}
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		err := saveDefaultConfig()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Чистим данные
-	cfg.DriveLetter = strings.TrimSpace(cfg.DriveLetter)
-	cfg.WebDAVURL = strings.TrimSpace(cfg.WebDAVURL)
-	cfg.WebDAVURL = strings.TrimRight(cfg.WebDAVURL, "/")
-
-	// Валидация
-	if cfg.DriveLetter == "" {
-		cfg.DriveLetter = "Z:"
-	}
-
-	return &cfg, nil
-}
-
-// Сохранение конфига в JSON
-func saveConfig(cfg *Config) error {
-	// Чистим данные перед сохранением
-	cleanCfg := *cfg
-	cleanCfg.DriveLetter = strings.TrimSpace(cleanCfg.DriveLetter)
-	cleanCfg.WebDAVURL = strings.TrimSpace(cleanCfg.WebDAVURL)
-	cleanCfg.WebDAVURL = strings.TrimRight(cleanCfg.WebDAVURL, "/")
-
-	data, err := json.MarshalIndent(&cleanCfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(getConfigPath(), data, 0600)
-}
-
-// Сохранение дефолтного конфига
-func saveDefaultConfig() error {
-	cfg := Config{
-		DriveLetter: "Z:",
-		WebDAVURL:   "https://your-webdav-server.com/remote.php/dav/files/your-username",
-	}
-	return saveConfig(&cfg)
 }
