@@ -6,7 +6,7 @@ set OUTPUT=src\webdav-drive.exe
 set INSTALLER_SCRIPT=installer\webdav-drive.iss
 
 echo [+] Building v%VERSION%...
-go build -ldflags="-s -w -X main.version=%VERSION%" -o "%OUTPUT%" ./src
+go build -ldflags="-H windowsgui -s -w -X main.version=%VERSION%" -o "%OUTPUT%" ./src
 if errorlevel 1 (
     echo [-] Compilation failed.
     pause

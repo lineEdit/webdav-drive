@@ -8,7 +8,7 @@ set BUILD_DIR=src
 echo [+] Building WebDAV Drive v%VERSION%...
 
 pushd "%BUILD_DIR%"
-go build -ldflags="-s -w -X main.version=%VERSION%" -o "%EXE_NAME%" .
+go build -ldflags="-H windowsgui -s -w -X main.version=%VERSION%" -o "%EXE_NAME%" .
 popd
 
 if errorlevel 1 (

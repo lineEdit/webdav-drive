@@ -2,12 +2,12 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/getlantern/systray"
 	"golang.org/x/sys/windows"
@@ -116,7 +116,7 @@ func setDriveLabel(driveLetter, label string) error {
 	return cmd.Run()
 }
 
-// Подключение диска с поддержкой диалога в GUI-приложении
+// Подключение диска для GUI-приложения (без консоли)
 func connectDrive(cfg *Config) error {
 	drive := cfg.DriveLetter
 	if !strings.HasSuffix(drive, ":") {
@@ -138,19 +138,22 @@ func connectDrive(cfg *Config) error {
 
 	logger.Infof("Подключение диска %s к URL: %s", drive, cfg.WebDAVURL)
 
-	// В connectDrive:
-	cmd := exec.Command("net", "use", drive, cfg.WebDAVURL, "/persistent:yes")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	// способ: передаём аргументы напрямую
+	cmd := exec.Command("cmd", "/C", "start", "WebDAV Connect", "/min", "net", "use", drive, cfg.WebDAVURL, "/persistent:yes")
 
 	err := cmd.Run()
-
 	if err != nil {
-		logger.Errorf("Ошибка подключения диска:")
-		logger.Errorf("  Stderr: %s", strings.TrimSpace(stderr.String()))
-		logger.Errorf("  Ошибка: %v", err)
+		logger.Errorf("Ошибка подключения диска: %v", err)
 		return err
+	}
+
+	// Ждём немного, чтобы соединение установилось
+	time.Sleep(2 * time.Second)
+
+	// Проверяем, что диск действительно подключился
+	if !isDriveMapped(drive) {
+		logger.Error("Диск не подключился (возможно, отменено пользователем)")
+		return fmt.Errorf("подключение не удалось")
 	}
 
 	logger.Infof("Диск %s успешно подключен", drive)
