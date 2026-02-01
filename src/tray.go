@@ -1,3 +1,4 @@
+// tray.go
 package main
 
 import (
@@ -31,30 +32,25 @@ func onReady() {
 
 	mConnectEnable := systray.AddMenuItem("Подключить диск", "Подключить WebDAV как сетевой диск")
 	mConnectDisable := systray.AddMenuItem("Отключить диск", "Отключить WebDAV-диск")
-
-	// Скрываем ненужный
-	if connected {
-		mConnectEnable.Hide()
-	} else {
-		mConnectDisable.Hide()
-	}
-
 	mOpen := systray.AddMenuItem("Проводник", "Открыть в Проводнике")
-	// Скрываем ненужный
-	// В начале onReady()
-	if connected {
-		mConnectEnable.Disable()
-		mConnectDisable.Enable()
-	} else {
-		mConnectEnable.Enable()
-		mConnectDisable.Disable()
-	}
 	mSettings := systray.AddMenuItem("Настройки", "Редактировать config.json")
 	mLogs := systray.AddMenuItem("Логи", "Посмотреть webdav-drive.log")
 	mCheckUpdate := systray.AddMenuItem("Проверить обновления", "Проверить наличие новой версии")
 	mExit := systray.AddMenuItem("Выход", "Завершить приложение")
 
-	// Горутина обработки
+	// Начальное состояние кнопок
+	if connected {
+		mConnectEnable.Disable()
+		mConnectDisable.Enable()
+		mOpen.Enable()
+	} else {
+		mConnectEnable.Enable()
+		mConnectDisable.Disable()
+		mOpen.Disable()
+		connectWithLogging()
+	}
+
+	// Горутина обработки событий
 	go func() {
 		for {
 			select {
@@ -109,9 +105,8 @@ func isDriveMapped(drive string) bool {
 	return strings.Contains(string(out), drive)
 }
 
-// setDriveLabel устанавливает понятное имя диска в Проводнике через реестр Windows
+// setDriveLabel устанавливает понятное имя диска через реестр
 func setDriveLabel(driveLetter, label string) error {
-	// Убираем двоеточие, если есть: "N:" → "N"
 	drive := strings.TrimSuffix(driveLetter, ":")
 	if drive == "" {
 		return fmt.Errorf("некорректная буква диска: %s", driveLetter)
@@ -121,8 +116,7 @@ func setDriveLabel(driveLetter, label string) error {
 	return cmd.Run()
 }
 
-// Подключение диска
-// connectDrive подключает WebDAV-диск и устанавливает понятное имя
+// Подключение диска с поддержкой диалога в GUI-приложении
 func connectDrive(cfg *Config) error {
 	drive := cfg.DriveLetter
 	if !strings.HasSuffix(drive, ":") {
@@ -134,17 +128,17 @@ func connectDrive(cfg *Config) error {
 		return nil
 	}
 
-	// Формируем понятное имя на основе URL
+	// Формируем метку
 	var label string
 	if u, err := url.Parse(cfg.WebDAVURL); err == nil {
 		label = fmt.Sprintf("WebDAV Drive — %s", u.Host)
 	} else {
 		label = "WebDAV Drive"
-		logger.Warnf("Не удалось распарсить URL для метки: %v", err)
 	}
 
 	logger.Infof("Подключение диска %s к URL: %s", drive, cfg.WebDAVURL)
 
+	// В connectDrive:
 	cmd := exec.Command("net", "use", drive, cfg.WebDAVURL, "/persistent:yes")
 
 	var stderr bytes.Buffer
@@ -161,11 +155,8 @@ func connectDrive(cfg *Config) error {
 
 	logger.Infof("Диск %s успешно подключен", drive)
 
-	// Устанавливаем понятное имя
 	if err := setDriveLabel(drive, label); err != nil {
 		logger.Warnf("Не удалось установить метку диска '%s': %v", label, err)
-	} else {
-		logger.Infof("Метка диска установлена: %s", label)
 	}
 
 	return nil
@@ -179,7 +170,7 @@ func openDriveInExplorer() {
 	_ = cmd.Run()
 }
 
-// Открыть webdav-drive.log
+// Открыть лог
 func openLogs() {
 	logger.Info("Открытие webdav-drive.log в редакторе")
 	cmd := exec.Command("notepad", getLogPath())
@@ -191,20 +182,26 @@ func onExit() {
 	os.Exit(0)
 }
 
+// Основная логика подключения — делегирует аутентификацию Windows
 func connectWithLogging() bool {
 	logger.Info("Попытка подключения диска...")
 
-	// Нормализуем URL
-	webdavURL := strings.TrimSpace(globalCfg.WebDAVURL)
-	if !strings.HasSuffix(webdavURL, "/") {
-		webdavURL += "/"
+	rawURL := globalCfg.WebDAVURL
+	cleanURL := strings.TrimSpace(rawURL)
+	if cleanURL == "" {
+		logger.Error("WebDAV URL не задан")
+		return false
+	}
+	if !strings.HasSuffix(cleanURL, "/") {
+		cleanURL += "/"
 	}
 
-	// Подключаем напрямую — Windows сам запросит логин при необходимости
 	cfg := &Config{
 		DriveLetter: globalCfg.DriveLetter,
-		WebDAVURL:   webdavURL,
+		WebDAVURL:   cleanURL,
 	}
+
+	logger.Infof("Нормализованный URL: %s", cleanURL)
 
 	if err := connectDrive(cfg); err != nil {
 		logger.Errorf("Не удалось подключить диск: %v", err)
@@ -215,9 +212,9 @@ func connectWithLogging() bool {
 	return true
 }
 
-// isAlreadyRunning — проверка на уже запущенный экземпляр
+// Проверка на уже запущенный экземпляр
 func isAlreadyRunning() bool {
 	mutexName, _ := windows.UTF16PtrFromString("WebDAVDrive_Mutex_" + os.Getenv("USERNAME"))
 	_, err := windows.CreateMutex(nil, false, mutexName)
-	return err != nil // true, если мьютекс уже существует
+	return err != nil
 }
